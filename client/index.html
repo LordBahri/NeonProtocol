@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="NeonProtocol — Space Sandbox MMO" />
+    <title>NeonProtocol</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #000008;
+        font-family: 'Courier New', Courier, monospace;
+        color: #00ffcc;
+      }
+      #app {
+        width: 100%;
+        height: 100%;
+        position: relative;
+      }
+      #game-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      #ui-layer {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      #ui-layer > * {
+        pointer-events: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas"></canvas>
+      <div id="ui-layer"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
