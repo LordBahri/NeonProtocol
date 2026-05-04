@@ -6,16 +6,29 @@ import { Server } from 'colyseus';
 import { monitor } from '@colyseus/monitor';
 import { SectorRoom } from './rooms/SectorRoom.ts';
 import { LobbyRoom } from './rooms/LobbyRoom.ts';
+import { closePool } from './db/connection.ts';
 
 const PORT = parseInt(process.env['PORT'] ?? '2567', 10);
 const isDev = process.env['NODE_ENV'] !== 'production';
 
+const CLIENT_URL = process.env['CLIENT_URL'] ?? (isDev ? 'http://localhost:3000' : '');
+
 const app = express();
-app.use(cors());
+
+app.use(cors({
+  origin: isDev
+    ? true
+    : CLIENT_URL
+      ? CLIENT_URL.split(',').map(u => u.trim())
+      : false,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true,
+}));
+
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: Date.now() });
+  res.json({ status: 'ok', timestamp: Date.now(), env: process.env['NODE_ENV'] });
 });
 
 if (isDev) {
@@ -36,12 +49,13 @@ gameServer.define('sector_room', SectorRoom, {
   sectorName: 'Alpha Sector',
 }).filterBy(['sectorId']);
 
-gameServer.onShutdown(() => {
+gameServer.onShutdown(async () => {
   console.log('[Server] Shutting down gracefully...');
+  await closePool();
 });
 
 gameServer.listen(PORT).then(() => {
-  console.log(`[Server] NeonProtocol server running on port ${PORT}`);
+  console.log(`[Server] NeonProtocol running on port ${PORT}`);
   if (isDev) {
     console.log(`[Server] Colyseus monitor: http://localhost:${PORT}/colyseus`);
   }

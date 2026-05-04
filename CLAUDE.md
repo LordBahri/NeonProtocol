@@ -66,8 +66,40 @@ Vercel build pipeline:
 - Asset caching: `Cache-Control: immutable` on hashed chunks, `no-cache` on `index.html`
 - `.vercelignore` excludes `server/` entirely
 
-### Backend — self-hosted (Node.js)
-See `server/.env` for required vars.
+### Backend — Railway
+`server/railway.json` + `server/nixpacks.toml` drive the build.
+
+**Railway setup (one-time):**
+1. New project → Deploy from GitHub repo
+2. Set **Root Directory** to `server/`
+3. Add env vars (see `server/.env.example`):
+
+| Variable | Value |
+|----------|-------|
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | Supabase connection string (see below) |
+| `CLIENT_URL` | Your Vercel URL, e.g. `https://neonprotocol.vercel.app` |
+| `TICK_RATE` | `20` |
+| `MAX_PLAYERS_PER_SECTOR` | `64` |
+
+Railway auto-sets `PORT` — do not override it.
+
+### Database — Supabase
+Supabase project → **Settings → Database → Connection string**.
+
+Two options:
+- **Direct** (port 5432) — for long-lived server processes on Railway
+  `postgresql://postgres:[PASSWORD]@db.[REF].supabase.co:5432/postgres`
+- **Supavisor pooler** (port 6543) — transaction mode, lower concurrent connections
+  `postgresql://postgres.[REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres`
+
+The DB pool auto-detects which port is used and caps `max` connections accordingly.
+SSL (`rejectUnauthorized: false`) is applied automatically in production.
+
+**Run migrations** (once, locally or via Railway one-off task):
+```bash
+cd server && DATABASE_URL=<supabase_url> npm run db:migrate
+```
 
 ## Commands
 
