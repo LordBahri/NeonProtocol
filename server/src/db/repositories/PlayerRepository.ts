@@ -1,4 +1,4 @@
-import { query, queryOne, withTransaction } from '../connection.ts';
+import { query, queryOne, withTransaction } from '../connection.js';
 import type { PoolClient } from 'pg';
 
 export interface Player {
