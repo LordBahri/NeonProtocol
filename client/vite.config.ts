@@ -1,7 +1,10 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
+const isCI = process.env['CI'] === 'true' || process.env['VERCEL'] === '1';
+
 export default defineConfig({
+  base: '/',
   resolve: {
     alias: {
       '@core': resolve(__dirname, 'src/core'),
@@ -23,7 +26,7 @@ export default defineConfig({
   },
   build: {
     target: 'es2022',
-    sourcemap: true,
+    sourcemap: !isCI,
     rollupOptions: {
       output: {
         manualChunks: {

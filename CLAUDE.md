@@ -48,6 +48,27 @@ server/src/
 - **Interest management**: server only broadcasts entities within a player's spatial cell ±1.
 - All game balance values live in `server/src/config/GameConfig.ts` — no magic numbers in systems.
 
+## Deployment
+
+### Frontend — Vercel
+`vercel.json` at repo root handles everything. Zero-config import from GitHub.
+
+**Required env vars in Vercel dashboard** (Project → Settings → Environment Variables):
+```
+VITE_SERVER_URL   wss://your-server.domain.com   (Production)
+VITE_ASSET_BASE_URL  /assets                      (Production)
+```
+
+Vercel build pipeline:
+- Install: `npm install` (installs all workspaces)
+- Build: `npm run build:client` → outputs `client/dist/`
+- SPA rewrite: all routes → `index.html`
+- Asset caching: `Cache-Control: immutable` on hashed chunks, `no-cache` on `index.html`
+- `.vercelignore` excludes `server/` entirely
+
+### Backend — self-hosted (Node.js)
+See `server/.env` for required vars.
+
 ## Commands
 
 ```bash
@@ -58,8 +79,11 @@ npm run dev
 npm run dev:client
 npm run dev:server
 
-# Build
+# Build all
 npm run build
+
+# Build client only (used by Vercel)
+npm run build:client
 
 # Type check
 npm run typecheck
