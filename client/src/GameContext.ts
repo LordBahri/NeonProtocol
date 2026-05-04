@@ -11,7 +11,7 @@ import { ShipRenderer } from './features/ships/ShipRenderer.ts';
 import { EffectsManager } from './features/fx/EffectsManager.ts';
 import { HUD } from './features/ui/HUD.ts';
 import { Minimap } from './features/ui/Minimap.ts';
-import { InputSystem, initInputListeners } from './features/ships/InputSystem.ts';
+import { InputSystem } from './features/ships/InputSystem.ts';
 import { MovementSystem } from './features/ships/MovementSystem.ts';
 import { CombatSystem } from './features/combat/CombatSystem.ts';
 import { ShieldRechargeSystem } from './features/combat/ShieldRechargeSystem.ts';
@@ -41,7 +41,7 @@ export class GameContext {
   private projectilePool!: ProjectilePool;
   private hud!: HUD;
   private minimap!: Minimap;
-  private cleanupInput!: () => void;
+  private cleanupInput: (() => void) | null = null;
   private resizeObserver!: ResizeObserver;
 
   constructor() {
@@ -68,7 +68,7 @@ export class GameContext {
     this.setupRenderers(uiLayer);
     this.setupGameLoop();
     this.setupResizeHandler(canvas);
-    this.cleanupInput = initInputListeners();
+    // Input is now owned by Engine.ts / InputManager
 
     this.background.init(window.innerWidth, window.innerHeight);
 
@@ -202,7 +202,7 @@ export class GameContext {
 
   destroy(): void {
     this.loop.stop();
-    this.cleanupInput();
+    this.cleanupInput?.();
     this.resizeObserver.disconnect();
     this.effectsManager.destroy();
     this.shipRenderer.destroy();
