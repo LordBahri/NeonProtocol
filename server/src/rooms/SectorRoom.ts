@@ -1,11 +1,11 @@
 import { Room, type Client } from 'colyseus';
-import { SectorSchema } from '../schemas/SectorSchema.ts';
-import { ShipSchema } from '../schemas/ShipSchema.ts';
-import { PhysicsSystem } from '../systems/PhysicsSystem.ts';
-import { CombatSystem } from '../systems/CombatSystem.ts';
-import { InterestManager } from '../systems/InterestManager.ts';
-import { AISystem } from '../systems/AISystem.ts';
-import { GameConfig } from '../config/GameConfig.ts';
+import { SectorSchema } from '../schemas/SectorSchema.js';
+import { ShipSchema } from '../schemas/ShipSchema.js';
+import { PhysicsSystem } from '../systems/PhysicsSystem.js';
+import { CombatSystem } from '../systems/CombatSystem.js';
+import { InterestManager } from '../systems/InterestManager.js';
+import { AISystem } from '../systems/AISystem.js';
+import { GameConfig } from '../config/GameConfig.js';
 
 export interface SectorRoomOptions {
   sectorId: string;
@@ -43,13 +43,14 @@ export class SectorRoom extends Room<SectorSchema> {
     this.setPatchRate(1000 / this.tickRate);
 
     this.onMessage('input', (client, data: ClientInputMessage) => {
-      this.physics.setInput(client.sessionId, {
+      const input = {
         thrustForward: data.thrustForward ?? false,
         thrustBack: data.thrustBack ?? false,
         rotateLeft: data.rotateLeft ?? false,
         rotateRight: data.rotateRight ?? false,
-        angle: data.angle,
-      });
+        ...(data.angle !== undefined && { angle: data.angle }),
+      };
+      this.physics.setInput(client.sessionId, input);
 
       if (data.fire) {
         const weaponType = (data.weaponType as keyof typeof GameConfig.weapons) ?? 'laser';
@@ -124,7 +125,7 @@ export class SectorRoom extends Room<SectorSchema> {
 
     const events = this.combat.update(this.state.ships, this.dt, this.tick);
     for (const event of events) {
-      this.broadcast('combat_event', event, { except: undefined });
+      this.broadcast('combat_event', event);
     }
 
     this.interest.update(this.state.ships);

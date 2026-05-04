@@ -4,9 +4,9 @@ import express from 'express';
 import cors from 'cors';
 import { Server } from 'colyseus';
 import { monitor } from '@colyseus/monitor';
-import { SectorRoom } from './rooms/SectorRoom.ts';
-import { LobbyRoom } from './rooms/LobbyRoom.ts';
-import { closePool } from './db/connection.ts';
+import { SectorRoom } from './rooms/SectorRoom.js';
+import { LobbyRoom } from './rooms/LobbyRoom.js';
+import { closePool } from './db/connection.js';
 
 const PORT = parseInt(process.env['PORT'] ?? '2567', 10);
 const isDev = process.env['NODE_ENV'] !== 'production';
@@ -39,7 +39,6 @@ const httpServer = createServer(app);
 
 const gameServer = new Server({
   server: httpServer,
-  presence: undefined,
 });
 
 gameServer.define('lobby', LobbyRoom);

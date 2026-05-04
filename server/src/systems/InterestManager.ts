@@ -1,6 +1,6 @@
 import type { MapSchema } from '@colyseus/schema';
-import type { ShipSchema } from '../schemas/ShipSchema.ts';
-import { GameConfig } from '../config/GameConfig.ts';
+import type { ShipSchema } from '../schemas/ShipSchema.js';
+import { GameConfig } from '../config/GameConfig.js';
 
 type SessionId = string;
 type CellKey = string;

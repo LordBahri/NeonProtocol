@@ -1,4 +1,4 @@
-import { Pool, type PoolClient } from 'pg';
+import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
 const isProd = process.env['NODE_ENV'] === 'production';
 
@@ -34,7 +34,7 @@ export function getPool(): Pool {
   return pool;
 }
 
-export async function query<T = unknown>(
+export async function query<T extends QueryResultRow = QueryResultRow>(
   sql: string,
   params?: unknown[],
 ): Promise<T[]> {
@@ -42,7 +42,7 @@ export async function query<T = unknown>(
   return result.rows;
 }
 
-export async function queryOne<T = unknown>(
+export async function queryOne<T extends QueryResultRow = QueryResultRow>(
   sql: string,
   params?: unknown[],
 ): Promise<T | null> {

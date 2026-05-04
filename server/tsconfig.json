@@ -15,15 +15,7 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "resolveJsonModule": true,
-    "sourceMap": true,
-    "baseUrl": ".",
-    "paths": {
-      "@config/*": ["src/config/*"],
-      "@rooms/*": ["src/rooms/*"],
-      "@schemas/*": ["src/schemas/*"],
-      "@systems/*": ["src/systems/*"],
-      "@db/*": ["src/db/*"]
-    }
+    "sourceMap": true
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

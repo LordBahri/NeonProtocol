@@ -1,6 +1,6 @@
 import { Room, type Client, matchMaker } from 'colyseus';
-import { LobbySchema, SectorInfoSchema } from '../schemas/LobbySchema.ts';
-import { GameConfig } from '../config/GameConfig.ts';
+import { LobbySchema, SectorInfoSchema } from '../schemas/LobbySchema.js';
+import { GameConfig } from '../config/GameConfig.js';
 
 export class LobbyRoom extends Room<LobbySchema> {
   private updateInterval: ReturnType<typeof setInterval> | null = null;
@@ -14,11 +14,11 @@ export class LobbyRoom extends Room<LobbySchema> {
       const sectorName = this.getSectorName(sectorId);
 
       try {
-        const room = await matchMaker.joinOrCreate('sector_room', {
+        const reservation = await matchMaker.joinOrCreate('sector_room', {
           sectorId,
           sectorName,
         });
-        client.send('sector_joined', { roomId: room.roomId, sessionId: room.sessionId });
+        client.send('sector_joined', { roomId: reservation.room.roomId, sessionId: reservation.sessionId });
       } catch (err) {
         client.send('error', { message: 'Failed to join sector' });
         console.error('[LobbyRoom] join_sector error:', err);

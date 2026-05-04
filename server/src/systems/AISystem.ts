@@ -1,7 +1,7 @@
 import type { MapSchema } from '@colyseus/schema';
-import type { ShipSchema } from '../schemas/ShipSchema.ts';
-import type { PhysicsInput } from './PhysicsSystem.ts';
-import type { FireCommand } from './CombatSystem.ts';
+import type { ShipSchema } from '../schemas/ShipSchema.js';
+import type { PhysicsInput } from './PhysicsSystem.js';
+import type { FireCommand } from './CombatSystem.js';
 
 export type AIBehavior = 'patrol' | 'chase' | 'flee' | 'idle';
 
