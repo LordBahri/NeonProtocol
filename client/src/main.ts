@@ -6,6 +6,7 @@ import { InputSystem }         from './features/ships/InputSystem.ts';
 import { MovementSystem }      from './features/ships/MovementSystem.ts';
 import { CombatSystem }        from './features/combat/CombatSystem.ts';
 import { ShieldRechargeSystem }from './features/combat/ShieldRechargeSystem.ts';
+import { GameScene }           from './scenes/GameScene.ts';
 
 // ── GSAP defaults ─────────────────────────────────────────────────────────────
 gsap.defaults({ ease: 'power2.out' });
@@ -66,8 +67,7 @@ async function bootstrap(): Promise<void> {
       (progress) => { /* TODO: show loading bar progress * 100 */ void progress; },
     );
 
-    // TODO: switch to a real GameScene once scenes are authored
-    // await engine.switchScene(new GameScene(engine));
+    await engine.switchScene(new GameScene(), { transition: 'none' });
 
     engine.start();
 
