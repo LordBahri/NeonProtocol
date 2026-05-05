@@ -14,10 +14,8 @@ interface NebulaPatch {
 export class BackgroundRenderer {
   private starfield: StarfieldLayer;
   private nebulaContainer: Container;
-  private readonly pipeline: RenderPipeline;
 
   constructor(pipeline: RenderPipeline) {
-    this.pipeline = pipeline;
     this.starfield = new StarfieldLayer(12345);
     this.nebulaContainer = new Container();
     this.nebulaContainer.label = 'nebula';
@@ -32,14 +30,14 @@ export class BackgroundRenderer {
     this.generateNebula(viewWidth, viewHeight, nebulaSeed);
   }
 
-  private generateNebula(viewWidth: number, viewHeight: number, seed: number): void {
+  private generateNebula(viewWidth: number, viewHeight: number, _seed: number): void {
     this.nebulaContainer.removeChildren();
 
     const patches: NebulaPatch[] = [
-      { x: viewWidth * 0.2, y: viewHeight * 0.3, radius: 300, color: 0x0a0040, alpha: 0.4 },
+      { x: viewWidth * 0.2,  y: viewHeight * 0.3,  radius: 300, color: 0x0a0040, alpha: 0.4  },
       { x: -viewWidth * 0.3, y: -viewHeight * 0.1, radius: 400, color: 0x001a1a, alpha: 0.35 },
-      { x: viewWidth * 0.5, y: -viewHeight * 0.4, radius: 250, color: 0x100020, alpha: 0.3 },
-      { x: -viewWidth * 0.1, y: viewHeight * 0.5, radius: 350, color: 0x001500, alpha: 0.25 },
+      { x: viewWidth * 0.5,  y: -viewHeight * 0.4, radius: 250, color: 0x100020, alpha: 0.3  },
+      { x: -viewWidth * 0.1, y: viewHeight * 0.5,  radius: 350, color: 0x001500, alpha: 0.25 },
     ];
 
     for (const patch of patches) {
@@ -54,8 +52,8 @@ export class BackgroundRenderer {
     }
   }
 
-  update(camX: number, camY: number, dt: number): void {
-    this.starfield.update(camX, camY, dt);
+  update(camX: number, camY: number, _dt: number): void {
+    this.starfield.update(camX, camY, _dt);
     this.nebulaContainer.x = -camX * 0.02;
     this.nebulaContainer.y = -camY * 0.02;
   }

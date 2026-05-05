@@ -7,7 +7,6 @@ export class AudioBus {
   readonly gain: GainNode;
   private _volume = 1;
   private _muted  = false;
-  private _preMuteVolume = 1;
 
   constructor(ctx: AudioContext, name: string, destination: AudioNode) {
     this.name = name;
@@ -34,7 +33,6 @@ export class AudioBus {
 
   mute(): void {
     if (this._muted) return;
-    this._preMuteVolume = this._volume;
     this._muted = true;
     this.gain.gain.value = 0;
   }

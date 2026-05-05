@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { createServer } from 'http';
-import express from 'express';
+import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import { Server } from 'colyseus';
 import { monitor } from '@colyseus/monitor';
@@ -27,7 +27,7 @@ app.use(cors({
 
 app.use(express.json());
 
-app.get('/health', (_req, res) => {
+app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: Date.now(), env: process.env['NODE_ENV'] });
 });
 

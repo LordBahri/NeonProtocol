@@ -1,10 +1,7 @@
 import { readFileSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import { getPool, closePool } from './connection.js';
 import 'dotenv/config';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 async function migrate(): Promise<void> {
   const pool = getPool();

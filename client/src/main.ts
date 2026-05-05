@@ -1,7 +1,6 @@
 import { gsap }   from 'gsap';
 import { engine } from './Engine.ts';
 import { CoreBundle, SpaceBundle, ShipBundle, AudioBundle } from './core/assets/AssetBundle.ts';
-import { SystemScheduler, SystemPriority } from './core/ecs/SystemScheduler.ts';
 import { InputSystem }         from './features/ships/InputSystem.ts';
 import { MovementSystem }      from './features/ships/MovementSystem.ts';
 import { CombatSystem }        from './features/combat/CombatSystem.ts';
