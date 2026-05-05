@@ -37,7 +37,10 @@ export class GameScene extends Scene {
   async onEnter(_from: Scene | null): Promise<void> {
     const { pipeline, world } = engine;
 
+    // Background — starfield/nebula generated around world origin (0,0)
     this.background = new BackgroundRenderer(pipeline);
+    this.background.init(window.innerWidth, window.innerHeight);
+
     this.sectorGrid = new SectorGrid(2000, 10, 10);
     this.chunkManager = new ChunkManager({
       grid: this.sectorGrid,
@@ -53,33 +56,35 @@ export class GameScene extends Scene {
 
     const uiLayer = document.getElementById('ui-layer') as HTMLElement;
     this.hud = new HUD(uiLayer);
+
+    // Minimap lives on the PixiJS stage directly (screen-space) so camera
+    // transforms on worldContainer do not displace it.
     this.minimap = new Minimap();
-    pipeline.layers.get(RenderLayer.UI_WORLD).addChild(this.minimap.container);
+    pipeline.app.stage.addChild(this.minimap.container);
     this.minimap.positionBottomRight(window.innerWidth, window.innerHeight);
 
-    this.background.init(window.innerWidth, window.innerHeight);
-
-    const localEntity = spawnShip(world, 'fighter', 5000, 5000, true, 'local');
+    // Spawn ships near world origin so the starfield background is visible.
+    const localEntity = spawnShip(world, 'fighter', 0, 0, true, 'local');
     useGameStore.getState().setLocalPlayer(localEntity, 'local');
-    spawnShip(world, 'frigate', 5300, 4800, false, 'enemy1');
-    spawnShip(world, 'destroyer', 4700, 5200, false, 'enemy2');
+    spawnShip(world, 'frigate',   300, -200, false, 'enemy1');
+    spawnShip(world, 'destroyer', -300,  200, false, 'enemy2');
 
-    engine.camera.snapTo(5000, 5000);
     useGameStore.getState().setPhase('playing');
 
+    console.log('[GameScene] Entered — 3 ships spawned at world origin');
     this.subscribeEvents();
   }
 
   render(alpha: number, world: World, pipeline: RenderPipeline): void {
     const dt = 1 / 60;
     const localEntity = useGameStore.getState().localPlayerEntity;
-    let camX = 5000;
-    let camY = 5000;
+    let camX = 0;
+    let camY = 0;
 
     if (world.isAlive(localEntity)) {
       const transform = world.getComponent(localEntity, TransformComponent);
-      const velocity = world.getComponent(localEntity, VelocityComponent);
-      const stats = world.getComponent(localEntity, ShipStatsComponent);
+      const velocity  = world.getComponent(localEntity, VelocityComponent);
+      const stats     = world.getComponent(localEntity, ShipStatsComponent);
 
       if (transform) {
         camX = transform.x;
@@ -139,6 +144,7 @@ export class GameScene extends Scene {
     this.effectsManager?.destroy();
     this.shipRenderer?.destroy();
     this.hud?.destroy();
+    this.minimap?.container.destroy({ children: true });
     globalBus.clear();
   }
 }
