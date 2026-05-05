@@ -14,14 +14,7 @@
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": true,
     "useDefineForClassFields": true,
-    "skipLibCheck": true,
-    "baseUrl": ".",
-    "paths": {
-      "@core/*": ["src/core/*"],
-      "@features/*": ["src/features/*"],
-      "@store/*": ["src/store/*"],
-      "@assets/*": ["src/assets/*"]
-    }
+    "skipLibCheck": true
   },
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
