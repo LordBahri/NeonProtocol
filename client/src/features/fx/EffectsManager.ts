@@ -40,6 +40,10 @@ export class EffectsManager {
     );
   }
 
+  get emitter(): ParticleEmitter {
+    return this.particleEmitter;
+  }
+
   spawnHitVfx(opts: HitVfxOptions): void {
     if (opts.isShieldHit) {
       this.particleEmitter.emit({

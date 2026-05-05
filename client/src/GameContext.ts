@@ -71,11 +71,11 @@ export class GameContext {
 
     this.background.init(window.innerWidth, window.innerHeight);
 
-    const localEntity = spawnShip(this.world, 'fighter', 5000, 5000, true, 'local');
+    const localEntity = spawnShip(this.world, 'fighter', 5000, 5000, { isLocalPlayer: true, serverId: 'local' });
     useGameStore.getState().setLocalPlayer(localEntity, 'local');
 
-    spawnShip(this.world, 'frigate', 5300, 4800, false, 'enemy1');
-    spawnShip(this.world, 'destroyer', 4700, 5200, false, 'enemy2');
+    spawnShip(this.world, 'frigate',   5300, 4800, { serverId: 'enemy1' });
+    spawnShip(this.world, 'destroyer', 4700, 5200, { serverId: 'enemy2' });
 
     this.loop.start();
     useGameStore.getState().setPhase('playing');
@@ -101,7 +101,7 @@ export class GameContext {
       onChunkLoad: async () => {},
       onChunkUnload: () => {},
     });
-    this.shipRenderer = new ShipRenderer(this.pipeline);
+    this.shipRenderer = new ShipRenderer(this.pipeline, this.effectsManager.emitter);
     this.effectsManager = new EffectsManager(this.pipeline);
     this.projectilePool = new ProjectilePool(128);
 

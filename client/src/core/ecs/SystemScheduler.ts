@@ -4,9 +4,16 @@ import type { World } from './World.ts';
 export const SystemPriority = {
   INPUT: 0,
   PHYSICS: 100,
+  FUEL: 105,
+  HEAT: 110,
+  WARP: 150,
   COMBAT: 200,
+  SHIELD_ARMOR: 202,
+  MINING: 210,
+  DESTRUCTION: 220,
   MOVEMENT: 300,
   NETWORK_SYNC: 400,
+  WRECK: 890,
   RENDER_PREP: 900,
 } as const;
 
