@@ -78,7 +78,7 @@ export class Engine {
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   async init(opts: EngineOptions): Promise<void> {
-    const { canvas, uiLayer } = opts;
+    const { canvas } = opts;
 
     await this.pipeline.init({
       canvas,

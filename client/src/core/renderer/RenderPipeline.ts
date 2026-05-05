@@ -1,5 +1,5 @@
-import { Application, Container, Ticker, BlurFilter } from 'pixi.js';
-import { LayerManager, RenderLayer } from './LayerManager.ts';
+import { Application, Container, Ticker } from 'pixi.js';
+import { LayerManager } from './LayerManager.ts';
 import { TextureCache } from './TextureCache.ts';
 import { ShaderManager } from './ShaderManager.ts';
 

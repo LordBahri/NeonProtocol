@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { Container, Graphics } from 'pixi.js';
 import type { World } from '../../core/ecs/World.ts';
 import { createEntityId } from '../../core/ecs/types.ts';
 import type { EntityId } from '../../core/ecs/types.ts';
@@ -22,12 +22,10 @@ interface ShipDisplayObject {
 
 export class ShipRenderer {
   private displayObjects = new Map<EntityId, ShipDisplayObject>();
-  private readonly pipeline: RenderPipeline;
   private readonly shipsLayer: Container;
   private time = 0;
 
   constructor(pipeline: RenderPipeline) {
-    this.pipeline = pipeline;
     this.shipsLayer = pipeline.layers.get(RenderLayer.SHIPS);
   }
 

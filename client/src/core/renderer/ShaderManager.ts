@@ -1,21 +1,18 @@
-import { Filter, GlProgram } from 'pixi.js';
+import { Filter, GlProgram, UniformGroup } from 'pixi.js';
 
 export interface ShaderDef {
   name: string;
   vertex: string;
   fragment: string;
-  uniforms?: Record<string, unknown>;
+  resources?: Record<string, UniformGroup>;
 }
 
 export class ShaderManager {
   private programs = new Map<string, GlProgram>();
-  private filters = new Map<string, Filter>();
+  private filters  = new Map<string, Filter>();
 
   registerProgram(def: ShaderDef): GlProgram {
-    const program = GlProgram.from({
-      vertex: def.vertex,
-      fragment: def.fragment,
-    });
+    const program = GlProgram.from({ vertex: def.vertex, fragment: def.fragment });
     this.programs.set(def.name, program);
     return program;
   }
@@ -28,7 +25,7 @@ export class ShaderManager {
 
   createFilter(name: string, def: ShaderDef): Filter {
     const program = this.registerProgram(def);
-    const filter = new Filter({ glProgram: program, resources: def.uniforms ?? {} });
+    const filter  = new Filter({ glProgram: program, resources: def.resources ?? {} });
     this.filters.set(name, filter);
     return filter;
   }
@@ -40,33 +37,42 @@ export class ShaderManager {
   }
 }
 
-export const NEON_GLOW_FRAG = /* glsl */ `
-  precision mediump float;
-  varying vec2 vTextureCoord;
-  uniform sampler2D uTexture;
-  uniform float uGlowStrength;
-  uniform vec3 uGlowColor;
+// ── Built-in shader snippets (GLSL 300 es, no #version — PixiJS prepends it) ──
 
-  void main() {
-    vec4 color = texture2D(uTexture, vTextureCoord);
-    float alpha = color.a;
-    vec3 glow = uGlowColor * alpha * uGlowStrength;
-    gl_FragColor = vec4(color.rgb + glow, alpha);
-  }
+/** Adds a neon glow tint on top of the source texture. */
+export const NEON_GLOW_FRAG = /* glsl */ `
+precision mediump float;
+
+in vec2 vTextureCoord;
+out vec4 finalColor;
+
+uniform sampler2D uTexture;
+uniform float uGlowStrength;
+uniform vec3  uGlowColor;
+
+void main(void) {
+  vec4 color = texture(uTexture, vTextureCoord);
+  float lum  = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+  vec3  glow = uGlowColor * lum * uGlowStrength;
+  finalColor = vec4(color.rgb + glow, color.a);
+}
 `;
 
+/** CRT-style horizontal scanlines. */
 export const SCANLINE_FRAG = /* glsl */ `
-  precision mediump float;
-  varying vec2 vTextureCoord;
-  uniform sampler2D uTexture;
-  uniform float uTime;
-  uniform float uIntensity;
-  uniform vec2 uResolution;
+precision mediump float;
 
-  void main() {
-    vec4 color = texture2D(uTexture, vTextureCoord);
-    float line = mod(gl_FragCoord.y + uTime * 20.0, 4.0);
-    float scanline = line < 2.0 ? 1.0 : 1.0 - uIntensity * 0.15;
-    gl_FragColor = vec4(color.rgb * scanline, color.a);
-  }
+in vec2 vTextureCoord;
+out vec4 finalColor;
+
+uniform sampler2D uTexture;
+uniform float uTime;
+uniform float uIntensity;
+
+void main(void) {
+  vec4  color    = texture(uTexture, vTextureCoord);
+  float line     = mod(gl_FragCoord.y + uTime * 20.0, 4.0);
+  float scanline = line < 2.0 ? 1.0 : 1.0 - uIntensity * 0.15;
+  finalColor     = vec4(color.rgb * scanline, color.a);
+}
 `;
