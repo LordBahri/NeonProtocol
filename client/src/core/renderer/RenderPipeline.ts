@@ -45,7 +45,7 @@ export class RenderPipeline {
       autoDensity: true,
       antialias: options.antialias ?? false,
       preference: 'webgl',
-      background: 0x000008,
+      background: 0x000c18,
       hello: false,
     });
 
