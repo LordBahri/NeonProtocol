@@ -33,6 +33,12 @@ import { useGameStore } from '../store/gameStore.ts';
 import { useUIStore } from '../store/uiStore.ts';
 import { globalBus, NetworkEvent } from '../core/network/MessageBus.ts';
 import type { EntityId } from '../core/ecs/types.ts';
+// ── Galaxy systems ─────────────────────────────────────────────────────────────
+import { getGalaxy, GALAXY_W, GALAXY_H } from '../features/galaxy/GalaxyGenerator.ts';
+import { FogOfWar, ScanningSystem } from '../features/galaxy/FogOfWar.ts';
+import { FactionInfluence } from '../features/galaxy/FactionInfluence.ts';
+import { TrafficSystem } from '../features/galaxy/TrafficSystem.ts';
+import { GalaxyOverlay } from '../features/galaxy/GalaxyOverlay.ts';
 
 export class GameScene extends Scene {
   readonly name = 'GameScene';
@@ -53,6 +59,13 @@ export class GameScene extends Scene {
   private projectilePool!: ProjectilePool;
   private hud!: HUD;
   private minimap!: Minimap;
+
+  // ── Galaxy simulation ─────────────────────────────────────────────────────
+  private fog!:          FogOfWar;
+  private scanner!:      ScanningSystem;
+  private factionSim!:   FactionInfluence;
+  private trafficSys!:   TrafficSystem;
+  private galaxyOverlay!: GalaxyOverlay;
 
   // Cinematic camera state — computed here, applied via engine.camera.setTarget
   private lookX = 0;
@@ -116,6 +129,21 @@ export class GameScene extends Scene {
     // SVG feTurbulence film grain overlay
     this.grain = new GrainOverlay();
 
+    // ── Galaxy: generate + init all simulation layers ─────────────────────
+    const galaxy       = getGalaxy(31337);
+    this.fog           = new FogOfWar();
+    this.factionSim    = new FactionInfluence(galaxy);
+    this.trafficSys    = new TrafficSystem(galaxy);
+    this.scanner       = new ScanningSystem({
+      scanRadiusCells:    3,
+      exploreRadiusCells: 1,
+      galaxy,
+      fog: this.fog,
+    });
+    this.galaxyOverlay = new GalaxyOverlay(
+      pipeline.app, galaxy, this.fog, this.factionSim, this.trafficSys,
+    );
+
     const localEntity = spawnShip(world, 'fighter', 0, 0, { isLocalPlayer: true, serverId: 'local' });
     useGameStore.getState().setLocalPlayer(localEntity, 'local');
 
@@ -172,9 +200,16 @@ export class GameScene extends Scene {
       }
     }
 
-    // ── Simulation systems (combat, AI) ─────────────────────────────────────
+    // ── Simulation systems ────────────────────────────────────────────────────
     WeaponSystem.update(world, dt);
     CombatAI.update(world, dt);
+    this.factionSim.tick(dt);
+    this.trafficSys.update(dt);
+    this.scanner.update(dt, camX, camY);
+    // Galaxy-space player pos: offset from center of galaxy
+    const playerGx = camX + GALAXY_W * 0.5;
+    const playerGy = camY + GALAXY_H * 0.5;
+    this.galaxyOverlay.update(dt, playerGx, playerGy);
 
     // ── Rendering ────────────────────────────────────────────────────────────
     ShipLighting.update(dt);
@@ -232,6 +267,7 @@ export class GameScene extends Scene {
   }
 
   dispose(): void {
+    this.galaxyOverlay?.destroy();
     this.beamRenderer?.destroy();
     this.cinExplosion?.destroy();
     this.empEffect?.destroy();

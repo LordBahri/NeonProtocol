@@ -77,6 +77,22 @@ export const GameConfig = {
     cellSize: 2000,
     viewRadius: 2,
   },
+  galaxy: {
+    seed: 31337,
+    cols: 32,
+    rows: 32,
+    cellSize: 2000,
+    systemCount: 280,
+    minSystemDist: 1400,
+    maxJumpRange: 3500,
+    factionCount: 5,
+    nebulaCount: 35,
+    dangerousZoneCount: 12,
+    scanRadius: 3,
+    exploredRadius: 1,
+    maxConvoys: 20,
+    trafficTickInterval: 1.0,
+  },
 } as const;
 
 export type ShipClass = keyof typeof GameConfig.ships;
