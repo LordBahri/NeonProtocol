@@ -25,6 +25,8 @@ import {
 } from './ShipSystemComponents.ts';
 import type { HeatData, FuelData, ArmorData } from './ShipSystemComponents.ts';
 import { ThrusterFX } from './ThrusterFX.ts';
+import { ShipMaterialFilter } from './ShipMaterialFilter.ts';
+import { ShipLighting } from './ShipLighting.ts';
 import { HULL_DEFINITIONS } from './ShipDefinitions.ts';
 import type { ParticleEmitter } from '../fx/ParticleEmitter.ts';
 import { globalBus, ShipEvent } from '../../core/network/MessageBus.ts';
@@ -81,9 +83,10 @@ interface ShipDO {
   hullSize:       number;
   tweens:         gsap.core.Tween[];
   // Texture-mapped hull layers (cruiser only — undefined on procedural ships)
-  hullSprites?:   Container;        // masked container: albedo + roughness + emissive
-  hullEmissive?:  Sprite;           // the additive pass, needs faction tint reset after damage flash
-  isLocal:        boolean;
+  hullSprites?:    Container;        // masked container: albedo + emissive
+  hullEmissive?:   Sprite;           // additive pass — tint updated on damage flash
+  matFilter?:      ShipMaterialFilter; // PBR lighting shader on albedo sprite
+  isLocal:         boolean;
 }
 
 type ExplosionCallback = (x: number, y: number, scale: number) => void;
@@ -207,6 +210,14 @@ export class ShipRenderer {
       dobj.midGlow.rotation = Math.sin(this.time * 18 + (entity as number)) * 0.025 * visual.engineGlowIntensity;
 
       // Circuitry emissive pulse — driven by GSAP tween started in buildShip
+
+      // PBR lighting — propagate global light direction and color to material shader
+      if (dobj.matFilter) {
+        dobj.matFilter.lightDir   = ShipLighting.dir;
+        dobj.matFilter.lightColor = ShipLighting.color;
+        dobj.matFilter.ambient    = ShipLighting.ambient;
+        dobj.matFilter.rimStrength = ShipLighting.rimStrength;
+      }
 
       // Damage flash
       if (visual.damageFlashTimer > 0) {
@@ -351,10 +362,13 @@ export class ShipRenderer {
     let hullEmissive: Sprite | undefined;
     let body: Graphics;
 
+    let matFilter: ShipMaterialFilter | undefined;
+
     if (shipClass === 'cruiser') {
       const layers = this.buildCruiserLayers(pts, size, isLocal);
       hullSprites  = layers.container;
       hullEmissive = layers.emissive;
+      matFilter    = layers.matFilter;
       nudge.addChild(hullSprites);
       body = this.buildCruiserOutline(pts, rimColor, cockpitColor);
     } else {
@@ -433,6 +447,7 @@ export class ShipRenderer {
       hullSize: size, tweens, isLocal,
       ...(hullSprites  ? { hullSprites }  : {}),
       ...(hullEmissive ? { hullEmissive } : {}),
+      ...(matFilter    ? { matFilter }    : {}),
     };
   }
 
@@ -638,7 +653,7 @@ export class ShipRenderer {
     pts: number[],
     size: number,
     isLocal: boolean,
-  ): { container: Container; emissive: Sprite } {
+  ): { container: Container; emissive: Sprite; matFilter: ShipMaterialFilter } {
     // Bounding box of the hull polygon: 60px wide × 88px tall, center at y = -8
     const spriteSize = size * 1.75; // square, covers hull bbox with small margin
     const spriteCY   = -size * 0.15;
@@ -662,25 +677,24 @@ export class ShipRenderer {
       return s;
     };
 
-    // Layer 1: albedo/diffuse — the coloured hull surface
+    // Layer 1: albedo — PBR lighting shader samples height + roughness maps in GPU
     const base = makeSprite('cruiser_albedo');
-    base.tint  = isLocal ? 0xaaddff : 0xddaa88;  // faction colour tint
+    base.tint  = isLocal ? 0xaaddff : 0xddaa88;
+    const rimVec: [number, number, number] = isLocal ? [0.0, 0.85, 1.0] : [1.0, 0.50, 0.0];
+    const heightTex  = engine.assets.getTextureOrEmpty('cruiser_height');
+    const roughTex   = engine.assets.getTextureOrEmpty('cruiser_roughness');
+    const matFilter  = new ShipMaterialFilter(heightTex.source, roughTex.source, rimVec);
+    base.filters = [matFilter];
     masked.addChild(base);
 
-    // Layer 2: roughness/dirt — multiply darkens rough pitted areas
-    const rough = makeSprite('cruiser_roughness');
-    rough.blendMode = 'multiply';
-    rough.alpha     = 0.60;
-    masked.addChild(rough);
-
-    // Layer 3: emissive — albedo again, additive, pulls out panel glow
+    // Layer 2: emissive — albedo again, additive, pulls out panel glow
     const emissive = makeSprite('cruiser_albedo');
     emissive.blendMode = 'add';
     emissive.alpha     = 0.20;
     emissive.tint      = isLocal ? 0x00eeff : 0xff8844;
     masked.addChild(emissive);
 
-    return { container: masked, emissive };
+    return { container: masked, emissive, matFilter };
   }
 
   // Outline + cockpit only — texture layers provide all the surface detail.

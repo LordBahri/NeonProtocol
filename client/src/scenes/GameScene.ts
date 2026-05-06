@@ -16,6 +16,7 @@ import { HUD } from '../features/ui/HUD.ts';
 import { Minimap } from '../features/ui/Minimap.ts';
 import { VignetteOverlay } from '../features/fx/VignetteOverlay.ts';
 import { GrainOverlay } from '../features/fx/GrainOverlay.ts';
+import { ShipLighting } from '../features/ships/ShipLighting.ts';
 import { spawnShip } from '../features/ships/ShipFactory.ts';
 import { lerp } from '../core/simulation/interpolation.ts';
 import {
@@ -149,6 +150,7 @@ export class GameScene extends Scene {
       }
     }
 
+    ShipLighting.update(dt);
     this.background.update(camX, camY, dt);
     this.asteroidField.update(dt);
     this.ambientLife.update(dt);
