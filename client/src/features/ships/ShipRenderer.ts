@@ -681,9 +681,9 @@ export class ShipRenderer {
     const base = makeSprite('cruiser_albedo');
     base.tint  = isLocal ? 0xaaddff : 0xddaa88;
     const rimVec: [number, number, number] = isLocal ? [0.0, 0.85, 1.0] : [1.0, 0.50, 0.0];
-    const heightTex  = engine.assets.getTextureOrEmpty('cruiser_height');
+    const normalTex  = engine.assets.getTextureOrEmpty('cruiser_height');
     const roughTex   = engine.assets.getTextureOrEmpty('cruiser_roughness');
-    const matFilter  = new ShipMaterialFilter(heightTex.source, roughTex.source, rimVec);
+    const matFilter  = new ShipMaterialFilter(normalTex.source, roughTex.source, rimVec);
     base.filters = [matFilter];
     masked.addChild(base);
 
