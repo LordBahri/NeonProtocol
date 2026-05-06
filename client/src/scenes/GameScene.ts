@@ -10,14 +10,19 @@ import { SectorGrid } from '../features/space/SectorGrid.ts';
 import { ChunkManager } from '../features/space/ChunkManager.ts';
 import { ShipRenderer } from '../features/ships/ShipRenderer.ts';
 import { EffectsManager } from '../features/fx/EffectsManager.ts';
+import { BeamRenderer } from '../features/fx/BeamRenderer.ts';
+import { CinematicExplosion } from '../features/fx/CinematicExplosion.ts';
+import { EMPEffect } from '../features/fx/EMPEffect.ts';
 import { ProjectilePool } from '../features/combat/ProjectilePool.ts';
+import { WeaponSystem } from '../features/combat/WeaponSystem.ts';
+import { CombatAI } from '../features/ships/CombatAI.ts';
 import { PostProcessPipeline } from '../core/renderer/PostProcessPipeline.ts';
 import { HUD } from '../features/ui/HUD.ts';
 import { Minimap } from '../features/ui/Minimap.ts';
 import { VignetteOverlay } from '../features/fx/VignetteOverlay.ts';
 import { GrainOverlay } from '../features/fx/GrainOverlay.ts';
 import { ShipLighting } from '../features/ships/ShipLighting.ts';
-import { spawnShip } from '../features/ships/ShipFactory.ts';
+import { spawnShip, setupCombatShip } from '../features/ships/ShipFactory.ts';
 import { lerp } from '../core/simulation/interpolation.ts';
 import {
   TransformComponent,
@@ -42,6 +47,9 @@ export class GameScene extends Scene {
   private chunkManager!: ChunkManager;
   private shipRenderer!: ShipRenderer;
   private effectsManager!: EffectsManager;
+  private beamRenderer!: BeamRenderer;
+  private cinExplosion!: CinematicExplosion;
+  private empEffect!: EMPEffect;
   private projectilePool!: ProjectilePool;
   private hud!: HUD;
   private minimap!: Minimap;
@@ -78,6 +86,14 @@ export class GameScene extends Scene {
     this.projectilePool = new ProjectilePool(128);
     pipeline.layers.get(RenderLayer.PROJECTILES).addChild(this.projectilePool.container);
 
+    const getEntityPos = (entity: EntityId) => {
+      const tf = engine.world.getComponent(entity, TransformComponent);
+      return tf ? { x: tf.x, y: tf.y } : null;
+    };
+    this.beamRenderer  = new BeamRenderer(pipeline, getEntityPos);
+    this.cinExplosion  = new CinematicExplosion(pipeline, this.effectsManager.emitter);
+    this.empEffect     = new EMPEffect(pipeline, this.effectsManager.emitter);
+
     // Post-processing: GPU vignette + subtle spatial distortion
     this.postProcess = new PostProcessPipeline(pipeline.app, {
       vignetteStrength: 0.58,
@@ -102,9 +118,15 @@ export class GameScene extends Scene {
 
     const localEntity = spawnShip(world, 'fighter', 0, 0, { isLocalPlayer: true, serverId: 'local' });
     useGameStore.getState().setLocalPlayer(localEntity, 'local');
-    spawnShip(world, 'frigate',   300, -200, { serverId: 'enemy1' });
-    spawnShip(world, 'destroyer', -300,  200, { serverId: 'enemy2' });
-    spawnShip(world, 'cruiser', 500, 300, { serverId: 'cruiser1' });
+
+    const enemy1 = spawnShip(world, 'frigate',   300, -200, { serverId: 'enemy1' });
+    setupCombatShip(world, enemy1, 'pulse_laser', 320);
+
+    const enemy2 = spawnShip(world, 'destroyer', -300,  200, { serverId: 'enemy2' });
+    setupCombatShip(world, enemy2, 'autocannon', 380);
+
+    const enemy3 = spawnShip(world, 'cruiser', 500, 300, { serverId: 'cruiser1' });
+    setupCombatShip(world, enemy3, 'beam_laser', 260);
 
     useGameStore.getState().setPhase('playing');
 
@@ -150,12 +172,18 @@ export class GameScene extends Scene {
       }
     }
 
+    // ── Simulation systems (combat, AI) ─────────────────────────────────────
+    WeaponSystem.update(world, dt);
+    CombatAI.update(world, dt);
+
+    // ── Rendering ────────────────────────────────────────────────────────────
     ShipLighting.update(dt);
     this.background.update(camX, camY, dt);
     this.asteroidField.update(dt);
     this.ambientLife.update(dt);
     this.chunkManager.update(camX, camY);
     this.shipRenderer.syncWithWorld(world, alpha, dt);
+    this.beamRenderer.update(dt);
     this.effectsManager.update(dt);
     this.projectilePool.update(dt);
     this.postProcess.update(dt);
@@ -188,7 +216,7 @@ export class GameScene extends Scene {
 
       const transform = engine.world.getComponent(entity, TransformComponent);
       if (transform) {
-        this.effectsManager.spawnExplosion(transform.x, transform.y, 1.5);
+        this.cinExplosion.spawn({ x: transform.x, y: transform.y, scale: 1.5 });
       }
     });
 
@@ -204,6 +232,10 @@ export class GameScene extends Scene {
   }
 
   dispose(): void {
+    this.beamRenderer?.destroy();
+    this.cinExplosion?.destroy();
+    this.empEffect?.destroy();
+    this.projectilePool?.destroy();
     this.effectsManager?.destroy();
     this.shipRenderer?.destroy();
     this.asteroidField?.destroy();

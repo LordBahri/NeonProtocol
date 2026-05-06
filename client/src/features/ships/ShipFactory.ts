@@ -20,6 +20,11 @@ import {
   UtilitySlotComponent,
   DestructionComponent,
 } from './ShipSystemComponents.ts';
+import {
+  ModuleStateComponent,
+  DamageStateComponent,
+} from '../combat/CombatComponents.ts';
+import { CombatAI } from './CombatAI.ts';
 import { HULL_DEFINITIONS } from './ShipDefinitions.ts';
 import type { HullDefinition } from './ShipDefinitions.ts';
 
@@ -145,10 +150,33 @@ export function spawnShip(
     breachThreshold: hull.breachThreshold,
   });
 
+  // ── Combat module state (all ships) ──
+  world.addComponent(entity, ModuleStateComponent);
+  world.addComponent(entity, DamageStateComponent);
+
   // ── Player input (local player only) ──
   if (isLocalPlayer) {
     world.addComponent(entity, PlayerInputComponent);
   }
 
   return entity;
+}
+
+/**
+ * Equip weapon slots on a ship and optionally set up AI combat.
+ * Call after spawnShip().
+ */
+export function setupCombatShip(
+  world:       World,
+  entity:      EntityId,
+  weaponType:  string,
+  orbitRadius: number,
+): void {
+  const slotComp = world.getComponent(entity, WeaponSlotComponent);
+  if (slotComp) {
+    for (const slot of slotComp.slots) {
+      slot.equippedType = weaponType;
+    }
+  }
+  CombatAI.setupAI(world, entity, orbitRadius, weaponType, []);
 }
