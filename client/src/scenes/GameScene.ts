@@ -103,6 +103,7 @@ export class GameScene extends Scene {
     useGameStore.getState().setLocalPlayer(localEntity, 'local');
     spawnShip(world, 'frigate',   300, -200, { serverId: 'enemy1' });
     spawnShip(world, 'destroyer', -300,  200, { serverId: 'enemy2' });
+    spawnShip(world, 'cruiser', 500, 300, { serverId: 'cruiser1' });
 
     useGameStore.getState().setPhase('playing');
 
