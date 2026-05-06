@@ -2,7 +2,6 @@ import { QueryCache } from './QueryCache.ts';
 import { SparseSet } from './SparseSet.ts';
 import {
   createEntityId,
-  INVALID_ENTITY,
   MAX_COMPONENT_TYPES,
   MAX_ENTITIES,
 } from './types.ts';

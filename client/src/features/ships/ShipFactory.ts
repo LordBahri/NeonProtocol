@@ -9,100 +9,143 @@ import {
   NetworkSyncComponent,
   VisualComponent,
 } from './ShipComponents.ts';
+import {
+  PhysicsComponent,
+  ArmorComponent,
+  HeatComponent,
+  FuelComponent,
+  WarpDriveComponent,
+  MiningComponent,
+  WeaponSlotComponent,
+  UtilitySlotComponent,
+  DestructionComponent,
+} from './ShipSystemComponents.ts';
+import { HULL_DEFINITIONS } from './ShipDefinitions.ts';
+import type { HullDefinition } from './ShipDefinitions.ts';
 
-export interface ShipBlueprint {
-  class: string;
-  spriteKey: string;
-  maxHull: number;
-  maxShield: number;
-  shieldRechargeRate: number;
-  maxSpeed: number;
-  acceleration: number;
-  drag: number;
-  rotationSpeed: number;
-  mass: number;
-  scale: number;
+export interface SpawnOptions {
+  withWarpDrive?: boolean;
+  withMining?: boolean;
+  serverId?: string;
+  isLocalPlayer?: boolean;
 }
-
-export const SHIP_BLUEPRINTS: Record<string, ShipBlueprint> = {
-  fighter: {
-    class: 'fighter',
-    spriteKey: 'ship_fighter',
-    maxHull: 80,
-    maxShield: 60,
-    shieldRechargeRate: 8,
-    maxSpeed: 500,
-    acceleration: 300,
-    drag: 0.93,
-    rotationSpeed: 3.2,
-    mass: 0.8,
-    scale: 1,
-  },
-  frigate: {
-    class: 'frigate',
-    spriteKey: 'ship_frigate',
-    maxHull: 200,
-    maxShield: 150,
-    shieldRechargeRate: 12,
-    maxSpeed: 350,
-    acceleration: 180,
-    drag: 0.88,
-    rotationSpeed: 2,
-    mass: 2,
-    scale: 1.5,
-  },
-  destroyer: {
-    class: 'destroyer',
-    spriteKey: 'ship_destroyer',
-    maxHull: 500,
-    maxShield: 300,
-    shieldRechargeRate: 20,
-    maxSpeed: 250,
-    acceleration: 120,
-    drag: 0.85,
-    rotationSpeed: 1.2,
-    mass: 5,
-    scale: 2.2,
-  },
-};
 
 export function spawnShip(
   world: World,
-  blueprintKey: string,
+  hullKey: string,
   x: number,
   y: number,
-  isLocalPlayer = false,
-  serverId = '',
+  opts: SpawnOptions = {},
 ): EntityId {
-  const bp = SHIP_BLUEPRINTS[blueprintKey] ?? SHIP_BLUEPRINTS.fighter!;
+  const hull: HullDefinition = HULL_DEFINITIONS[hullKey] ?? HULL_DEFINITIONS['fighter']!;
+  const { isLocalPlayer = false, serverId = '' } = opts;
+
   const entity = world.createEntity();
 
+  // ── Core ECS components (kept for backward-compat / renderer / network) ──
   world.addComponent(entity, TransformComponent, { x, y, prevX: x, prevY: y });
   world.addComponent(entity, VelocityComponent);
   world.addComponent(entity, ThrustComponent, {
-    maxSpeed: bp.maxSpeed,
-    acceleration: bp.acceleration,
-    drag: bp.drag,
-    rotationSpeed: bp.rotationSpeed,
+    maxSpeed:      hull.thrustPower,
+    acceleration:  hull.thrustPower,
+    drag:          1 - hull.linearDamping,
+    rotationSpeed: hull.torquePower,
   });
   world.addComponent(entity, ShipStatsComponent, {
-    maxHull: bp.maxHull,
-    hull: bp.maxHull,
-    maxShield: bp.maxShield,
-    shield: bp.maxShield,
-    shieldRechargeRate: bp.shieldRechargeRate,
-    mass: bp.mass,
-    class: bp.class,
+    maxHull:          hull.maxHull,
+    hull:             hull.maxHull,
+    maxShield:        hull.maxShield,
+    shield:           hull.maxShield,
+    shieldRechargeRate: hull.shieldRechargeRate,
+    mass:             hull.mass,
+    class:            hull.class,
   });
   world.addComponent(entity, VisualComponent, {
-    spriteKey: bp.spriteKey,
-    scale: bp.scale,
+    spriteKey: hull.spriteKey,
+    scale:     hull.scale,
   });
-  world.addComponent(entity, NetworkSyncComponent, {
-    serverId,
-    isLocalPlayer,
+  world.addComponent(entity, NetworkSyncComponent, { serverId, isLocalPlayer });
+
+  // ── Physics (inertia system) ──
+  world.addComponent(entity, PhysicsComponent, {
+    thrustPower:          hull.thrustPower,
+    reverseThrustFraction: hull.reverseThrustFraction,
+    torquePower:          hull.torquePower,
+    momentOfInertia:      hull.momentOfInertia,
+    linearDamping:        hull.linearDamping,
+    angularDamping:       hull.angularDamping,
+    boostMultiplier:      hull.boostMultiplier,
+    boostFuelCost:        hull.boostFuelCost,
+    warpCharging:         false,
   });
 
+  // ── Directional armor ──
+  world.addComponent(entity, ArmorComponent, {
+    foreArmor:       hull.foreArmor,
+    aftArmor:        hull.aftArmor,
+    portArmor:       hull.portArmor,
+    starboardArmor:  hull.starboardArmor,
+    foreArmorMax:    hull.foreArmor,
+    aftArmorMax:     hull.aftArmor,
+    portArmorMax:    hull.portArmor,
+    starboardArmorMax: hull.starboardArmor,
+  });
+
+  // ── Thermal ──
+  world.addComponent(entity, HeatComponent, {
+    maxHeat:        hull.maxHeat,
+    dissipationRate: hull.heatDissipation,
+    thrustHeatRate: hull.thrustHeatRate,
+  });
+
+  // ── Fuel ──
+  world.addComponent(entity, FuelComponent, {
+    fuel:                hull.maxFuel,
+    maxFuel:             hull.maxFuel,
+    consumptionRate:     hull.fuelConsumptionRate,
+    boostConsumptionRate: hull.boostFuelCost,
+  });
+
+  // ── Warp drive ──
+  const wantWarp = opts.withWarpDrive ?? hull.hasWarpDrive;
+  if (wantWarp) {
+    world.addComponent(entity, WarpDriveComponent, {
+      chargeRequired:  hull.warpChargeTime,
+      cooldownDuration: hull.warpCooldown,
+      warpRange:       hull.warpRange,
+    });
+  }
+
+  // ── Mining ──
+  if (opts.withMining) {
+    world.addComponent(entity, MiningComponent);
+  }
+
+  // ── Weapon slots (one per hardpoint) ──
+  world.addComponent(entity, WeaponSlotComponent, {
+    slots: hull.weaponHardpoints.map((_hp, idx) => ({
+      hardpointIndex: idx,
+      equippedType: '',
+      cooldownTimer: 0,
+    })),
+  });
+
+  // ── Utility slots ──
+  world.addComponent(entity, UtilitySlotComponent, {
+    slots: hull.utilityHardpoints.map((hp) => ({
+      slotType:       hp.slotType,
+      equippedModule: '',
+      active:         false,
+      chargeLevel:    0,
+    })),
+  });
+
+  // ── Destruction FSM ──
+  world.addComponent(entity, DestructionComponent, {
+    breachThreshold: hull.breachThreshold,
+  });
+
+  // ── Player input (local player only) ──
   if (isLocalPlayer) {
     world.addComponent(entity, PlayerInputComponent);
   }

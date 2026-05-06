@@ -18,11 +18,10 @@ import { ShieldRechargeSystem } from './features/combat/ShieldRechargeSystem.ts'
 import { RenderLayer } from './core/renderer/LayerManager.ts';
 import { ProjectilePool } from './features/combat/ProjectilePool.ts';
 import { spawnShip } from './features/ships/ShipFactory.ts';
-import { TransformComponent, VelocityComponent, NetworkSyncComponent, ShipStatsComponent } from './features/ships/ShipComponents.ts';
+import { TransformComponent, VelocityComponent, ShipStatsComponent } from './features/ships/ShipComponents.ts';
 import { createEntityId } from './core/ecs/types.ts';
 import { useGameStore } from './store/gameStore.ts';
 import { useUIStore } from './store/uiStore.ts';
-import { useNetworkStore } from './store/networkStore.ts';
 import { globalBus, NetworkEvent } from './core/network/MessageBus.ts';
 
 export class GameContext {
@@ -72,11 +71,11 @@ export class GameContext {
 
     this.background.init(window.innerWidth, window.innerHeight);
 
-    const localEntity = spawnShip(this.world, 'fighter', 5000, 5000, true, 'local');
+    const localEntity = spawnShip(this.world, 'fighter', 5000, 5000, { isLocalPlayer: true, serverId: 'local' });
     useGameStore.getState().setLocalPlayer(localEntity, 'local');
 
-    spawnShip(this.world, 'frigate', 5300, 4800, false, 'enemy1');
-    spawnShip(this.world, 'destroyer', 4700, 5200, false, 'enemy2');
+    spawnShip(this.world, 'frigate',   5300, 4800, { serverId: 'enemy1' });
+    spawnShip(this.world, 'destroyer', 4700, 5200, { serverId: 'enemy2' });
 
     this.loop.start();
     useGameStore.getState().setPhase('playing');
@@ -102,7 +101,7 @@ export class GameContext {
       onChunkLoad: async () => {},
       onChunkUnload: () => {},
     });
-    this.shipRenderer = new ShipRenderer(this.pipeline);
+    this.shipRenderer = new ShipRenderer(this.pipeline, this.effectsManager.emitter);
     this.effectsManager = new EffectsManager(this.pipeline);
     this.projectilePool = new ProjectilePool(128);
 
@@ -155,7 +154,6 @@ export class GameContext {
     this.effectsManager.update(dt);
     this.projectilePool.update(dt);
 
-    const bounds = this.pipeline.getVisibleBounds();
     useUIStore.getState().setCamera(camX, camY);
 
     this.hud.updateFPS(Math.round(this.pipeline.ticker.FPS));

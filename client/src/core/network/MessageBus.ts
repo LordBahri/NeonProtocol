@@ -56,3 +56,42 @@ export const NetworkEvent = {
   COMBAT_HIT: 'network:combat_hit',
   COMBAT_DEATH: 'network:combat_death',
 } as const;
+
+export const ShipEvent = {
+  DAMAGE_APPLY:    'ship:damage_apply',
+  HULL_BREACHED:   'ship:hull_breached',
+  SHIP_EXPLODING:  'ship:exploding',
+  SHIP_DEAD:       'ship:dead',
+  WARP_JUMPED:     'ship:warp_jumped',
+  ORE_COLLECTED:   'ship:ore_collected',
+  FUEL_EMPTY:      'ship:fuel_empty',
+} as const;
+
+export interface DamageApplyEvent {
+  targetEntity: number;
+  damage: number;
+  hitAngle: number; // world-space angle of the incoming hit
+}
+
+export interface ShipLifecycleEvent {
+  entity: number;
+  x: number;
+  y: number;
+}
+
+export interface WarpJumpedEvent {
+  entity: number;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+}
+
+export interface OreCollectedEvent {
+  entity: number;
+  amount: number;
+}
+
+export interface FuelEmptyEvent {
+  entity: number;
+}

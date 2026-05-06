@@ -1,16 +1,5 @@
 import { gsap } from 'gsap';
 
-interface HUDState {
-  hull: number;
-  maxHull: number;
-  shield: number;
-  maxShield: number;
-  speed: number;
-  playerCount: number;
-  fps: number;
-  ping: number;
-  sectorName: string;
-}
 
 export class HUD {
   private container: HTMLElement;
@@ -24,13 +13,6 @@ export class HUD {
   private sectorText!: HTMLElement;
   private playerText!: HTMLElement;
 
-  private state: HUDState = {
-    hull: 100, maxHull: 100,
-    shield: 100, maxShield: 100,
-    speed: 0, playerCount: 1,
-    fps: 60, ping: 0,
-    sectorName: 'Unknown Sector',
-  };
 
   constructor(uiLayer: HTMLElement) {
     this.container = document.createElement('div');

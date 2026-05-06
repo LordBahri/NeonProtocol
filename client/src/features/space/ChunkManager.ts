@@ -1,4 +1,4 @@
-import type { SectorGrid, SectorCell } from './SectorGrid.ts';
+import type { SectorGrid } from './SectorGrid.ts';
 
 export interface Chunk {
   key: string;
