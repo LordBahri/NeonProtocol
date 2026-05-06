@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { createStore } from 'zustand/vanilla';
 import type { EntityId } from '../core/ecs/types.ts';
 import { INVALID_ENTITY } from '../core/ecs/types.ts';
 
@@ -31,7 +31,7 @@ interface GameState {
   tickSimulation: (dt: number) => void;
 }
 
-export const useGameStore = create<GameState>((set) => ({
+export const useGameStore = createStore<GameState>((set) => ({
   phase: 'loading',
   localPlayerEntity: INVALID_ENTITY,
   localPlayerId: '',

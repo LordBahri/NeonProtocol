@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { createStore } from 'zustand/vanilla';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error';
 
@@ -18,7 +18,7 @@ interface NetworkState {
   recordPingReceived: () => void;
 }
 
-export const useNetworkStore = create<NetworkState>((set, get) => ({
+export const useNetworkStore = createStore<NetworkState>((set, get) => ({
   status: 'disconnected',
   ping: 0,
   roomId: '',
