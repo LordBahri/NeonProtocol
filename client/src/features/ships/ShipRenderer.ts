@@ -170,7 +170,10 @@ export class ShipRenderer {
       // Atmospheric glow breathe
       const breathe = 0.55 + 0.45 * Math.sin(this.time * 1.8 + (entity as number) * 0.7);
       dobj.outerGlow.alpha = 0.18 + 0.10 * breathe;
-      dobj.midGlow.alpha   = 0.28 + 0.14 * breathe;
+      // Subtle mid-glow shimmer when engine active — creates hull heat effect
+      const shimmer = visual.engineGlowIntensity * 0.08 * Math.sin(this.time * 44 + (entity as number));
+      dobj.midGlow.alpha   = 0.28 + 0.14 * breathe + shimmer;
+      dobj.midGlow.rotation = Math.sin(this.time * 18 + (entity as number)) * 0.025 * visual.engineGlowIntensity;
 
       // Damage flash
       if (visual.damageFlashTimer > 0) {
@@ -185,10 +188,12 @@ export class ShipRenderer {
         ? 0.6 + 0.4 * Math.sin(this.time * 20)
         : 1;
 
-      // Shield ring + status bars
+      // Shield ring: always show faint idle frequency, flares on damage
       if (stats) {
         const shieldFrac = stats.shield / stats.maxShield;
-        const targetA = shieldFrac < 0.99 ? shieldFrac * 0.55 + 0.08 : 0;
+        // Idle shield: very faint always-on ripple (0.03–0.05) — gives ship a living quality
+        const idleA  = 0.03 + 0.02 * Math.sin(this.time * 2.2 + (entity as number) * 1.3);
+        const targetA = shieldFrac < 0.99 ? shieldFrac * 0.55 + 0.08 : idleA;
         visual.shieldGlowAlpha = lerp(visual.shieldGlowAlpha, targetA, 0.06);
         const sPulse = 0.7 + 0.3 * Math.sin(this.time * 4.5 + (entity as number));
         dobj.shieldRing.alpha = visual.shieldGlowAlpha * sPulse;

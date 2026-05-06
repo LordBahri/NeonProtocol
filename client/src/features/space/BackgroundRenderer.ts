@@ -12,10 +12,31 @@ interface NebulaCloud {
   parallax: number;
 }
 
+interface Wisp {
+  container: Container;
+  baseX: number; baseY: number;
+  vx: number; vy: number;   // very slow drift in world units/s (0.1–0.4)
+  parallax: number;          // very low (0.02–0.05)
+}
+
 interface DustParticle {
   x: number; y: number;
   vx: number; vy: number;
   size: number; alpha: number;
+}
+
+interface DustLayer {
+  gfx: Graphics;
+  particles: DustParticle[];
+  color: number;
+  speed: number;  // velocity multiplier
+}
+
+interface Sparkle {
+  x: number; y: number;
+  size: number;
+  phase: number;
+  speed: number;
 }
 
 // Large nebula clouds in world-space with low parallax (appear nearly stationary).
@@ -30,6 +51,8 @@ const CLOUD_DEFS = [
   { x:   200, y:   900, r:  800, col: 0x1a0c00, maxA: 0.32, dax: 50, day: 45, f: 0.028, p: 0.040 },
 ] as const;
 
+const WISP_COLORS = [0x0e1a2a, 0x0a0018, 0x001a14, 0x1a0a00] as const;
+
 function lcg(seed: number): () => number {
   let s = seed | 0;
   return () => {
@@ -43,8 +66,10 @@ export class BackgroundRenderer {
   private starfield: StarfieldLayer;
   private bgLayer: Container;
   private clouds: NebulaCloud[] = [];
-  private dustGfx: Graphics;
-  private dustParticles: DustParticle[] = [];
+  private wisps: Wisp[] = [];
+  private dustLayers: DustLayer[] = [];
+  private sparkleGfx: Graphics;
+  private sparkles: Sparkle[] = [];
   private time = 0;
 
   constructor(pipeline: RenderPipeline) {
@@ -53,16 +78,18 @@ export class BackgroundRenderer {
     this.starfield = new StarfieldLayer(12345);
     this.bgLayer.addChild(this.starfield.container);
 
-    // Dust lives on app.stage (screen-space, not world-space)
-    this.dustGfx = new Graphics();
-    this.dustGfx.label = 'space_dust';
-    this.dustGfx.blendMode = 'add';
-    pipeline.app.stage.addChild(this.dustGfx);
+    // Sparkle overlay lives on app.stage (screen-space)
+    this.sparkleGfx = new Graphics();
+    this.sparkleGfx.label = 'space_sparkles';
+    this.sparkleGfx.blendMode = 'add';
+    pipeline.app.stage.addChild(this.sparkleGfx);
   }
 
   init(viewW: number, viewH: number): void {
     this.buildNebula();
+    this.buildWisps();
     this.buildDust(viewW, viewH);
+    this.buildSparkles(viewW, viewH);
     this.starfield.generate(viewW, viewH);
   }
 
@@ -102,24 +129,122 @@ export class BackgroundRenderer {
     }
   }
 
+  private buildWisps(): void {
+    const rng = lcg(77331);
+    for (let i = 0; i < 18; i++) {
+      const angle   = rng() * Math.PI * 2;
+      const length  = 150 + rng() * 300;   // 150–450 world units
+      const width   = 6 + rng() * 12;      // 6–18 world units
+      const alpha   = 0.03 + rng() * 0.07; // 0.03–0.10
+      const color   = WISP_COLORS[Math.floor(rng() * WISP_COLORS.length)];
+
+      const g = new Graphics();
+      g.blendMode = 'add';
+      const halfLen = length / 2;
+      const halfW   = width / 2;
+      g.roundRect(-halfLen, -halfW, length, width, halfW);
+      g.fill({ color, alpha });
+
+      const cont = new Container();
+      cont.addChild(g);
+      cont.rotation = angle;
+
+      const baseX = (rng() * 2 - 1) * 1800;
+      const baseY = (rng() * 2 - 1) * 1800;
+      cont.x = baseX;
+      cont.y = baseY;
+      this.bgLayer.addChild(cont);
+
+      this.wisps.push({
+        container: cont,
+        baseX,
+        baseY,
+        vx:       (rng() - 0.5) * 0.4,
+        vy:       (rng() - 0.5) * 0.4,
+        parallax: 0.02 + rng() * 0.04,
+      });
+    }
+  }
+
   private buildDust(w: number, h: number): void {
-    const rng = lcg(99);
-    for (let i = 0; i < 130; i++) {
-      this.dustParticles.push({
+    // Near layer — fast, bright, bluish
+    const nearGfx = new Graphics();
+    nearGfx.label = 'space_dust_near';
+    nearGfx.blendMode = 'add';
+    this.pipeline.app.stage.addChild(nearGfx);
+    const rngNear = lcg(99);
+    const nearParticles: DustParticle[] = [];
+    for (let i = 0; i < 60; i++) {
+      nearParticles.push({
+        x:     rngNear() * w,
+        y:     rngNear() * h,
+        vx:    (rngNear() - 0.5) * 24,  // ±12 world units/s (applied * speed 1.0)
+        vy:    (rngNear() - 0.5) * 24,
+        size:  0.3 + rngNear() * 0.7,   // 0.3–1.0
+        alpha: 0.12 + rngNear() * 0.16, // 0.12–0.28
+      });
+    }
+    this.dustLayers.push({ gfx: nearGfx, particles: nearParticles, color: 0x8aaac8, speed: 1.0 });
+
+    // Mid layer — medium, cooler
+    const midGfx = new Graphics();
+    midGfx.label = 'space_dust_mid';
+    midGfx.blendMode = 'add';
+    this.pipeline.app.stage.addChild(midGfx);
+    const rngMid = lcg(4411);
+    const midParticles: DustParticle[] = [];
+    for (let i = 0; i < 50; i++) {
+      midParticles.push({
+        x:     rngMid() * w,
+        y:     rngMid() * h,
+        vx:    (rngMid() - 0.5) * 14,  // ±7 at speed 0.6 → effective ±~8.4 raw
+        vy:    (rngMid() - 0.5) * 14,
+        size:  0.2 + rngMid() * 0.45,  // 0.2–0.65
+        alpha: 0.08 + rngMid() * 0.10, // 0.08–0.18
+      });
+    }
+    this.dustLayers.push({ gfx: midGfx, particles: midParticles, color: 0x4a6688, speed: 0.6 });
+
+    // Far layer — slow, very faint
+    const farGfx = new Graphics();
+    farGfx.label = 'space_dust_far';
+    farGfx.blendMode = 'add';
+    this.pipeline.app.stage.addChild(farGfx);
+    const rngFar = lcg(8822);
+    const farParticles: DustParticle[] = [];
+    for (let i = 0; i < 35; i++) {
+      farParticles.push({
+        x:     rngFar() * w,
+        y:     rngFar() * h,
+        vx:    (rngFar() - 0.5) * 8,   // ±4 at speed 0.3 → effective ±~2.4 raw
+        vy:    (rngFar() - 0.5) * 8,
+        size:  0.15 + rngFar() * 0.25, // 0.15–0.4
+        alpha: 0.04 + rngFar() * 0.06, // 0.04–0.10
+      });
+    }
+    this.dustLayers.push({ gfx: farGfx, particles: farParticles, color: 0x223344, speed: 0.3 });
+  }
+
+  private buildSparkles(w: number, h: number): void {
+    const rng = lcg(55123);
+    for (let i = 0; i < 35; i++) {
+      this.sparkles.push({
         x:     rng() * w,
         y:     rng() * h,
-        vx:    (rng() - 0.5) * 9,
-        vy:    (rng() - 0.5) * 9,
-        size:  0.25 + rng() * 0.85,
-        alpha: 0.10 + rng() * 0.25,
+        size:  0.4 + rng() * 0.8,          // 0.4–1.2
+        phase: rng() * Math.PI * 2,
+        speed: 0.8 + rng() * 4.0,
       });
     }
   }
 
   update(camX: number, camY: number, dt: number): void {
     this.time += dt;
-    const s = this.pipeline.screen;
+    const s  = this.pipeline.screen;
+    const sw = s.width;
+    const sh = s.height;
 
+    // --- Nebula clouds ---
     for (const c of this.clouds) {
       const dx = Math.sin(this.time * c.freqX + c.phase) * c.driftAX;
       const dy = Math.cos(this.time * c.freqY + c.phase * 1.3) * c.driftAY;
@@ -128,25 +253,51 @@ export class BackgroundRenderer {
       c.container.y = c.baseY + dy + camY * (1 - c.parallax);
     }
 
+    // --- Nebula wisps ---
+    for (const w of this.wisps) {
+      w.baseX += w.vx * dt;
+      w.baseY += w.vy * dt;
+      w.container.x = w.baseX + camX * (1 - w.parallax);
+      w.container.y = w.baseY + camY * (1 - w.parallax);
+    }
+
+    // --- Starfield ---
     this.starfield.update(camX, camY, dt);
 
-    const sw = s.width;
-    const sh = s.height;
-    this.dustGfx.clear();
-    for (const p of this.dustParticles) {
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      if (p.x < 0) p.x += sw;
-      else if (p.x > sw) p.x -= sw;
-      if (p.y < 0) p.y += sh;
-      else if (p.y > sh) p.y -= sh;
-      this.dustGfx.circle(p.x, p.y, p.size);
-      this.dustGfx.fill({ color: 0x7799bb, alpha: p.alpha });
+    // --- Three-layer dust (screen-space) ---
+    for (const layer of this.dustLayers) {
+      layer.gfx.clear();
+      for (const p of layer.particles) {
+        p.x += p.vx * layer.speed * dt;
+        p.y += p.vy * layer.speed * dt;
+        if (p.x < 0) p.x += sw;
+        else if (p.x > sw) p.x -= sw;
+        if (p.y < 0) p.y += sh;
+        else if (p.y > sh) p.y -= sh;
+        layer.gfx.circle(p.x, p.y, p.size);
+        layer.gfx.fill({ color: layer.color, alpha: p.alpha });
+      }
+    }
+
+    // --- Sparkle micro-particles (screen-space) ---
+    this.sparkleGfx.clear();
+    for (const sp of this.sparkles) {
+      const t = 0.5 + 0.5 * Math.sin(this.time * sp.speed + sp.phase);
+      // Only draw if above threshold — creates hard on/off glitter
+      if (t > 0.72) {
+        const a = (t - 0.72) / 0.28 * 0.7; // 0→0.7 range
+        this.sparkleGfx.circle(sp.x, sp.y, sp.size);
+        this.sparkleGfx.fill({ color: 0xeef6ff, alpha: a });
+      }
     }
   }
 
   destroy(): void {
-    if (this.dustGfx.parent) this.dustGfx.parent.removeChild(this.dustGfx);
-    this.dustGfx.destroy();
+    for (const layer of this.dustLayers) {
+      if (layer.gfx.parent) layer.gfx.parent.removeChild(layer.gfx);
+      layer.gfx.destroy();
+    }
+    if (this.sparkleGfx.parent) this.sparkleGfx.parent.removeChild(this.sparkleGfx);
+    this.sparkleGfx.destroy();
   }
 }
