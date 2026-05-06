@@ -1,5 +1,5 @@
 import { Schema, type, MapSchema } from '@colyseus/schema';
-import { ShipSchema } from './ShipSchema.js';
+import { ShipSchema } from './ShipSchema';
 
 export class SectorSchema extends Schema {
   @type({ map: ShipSchema }) ships = new MapSchema<ShipSchema>();

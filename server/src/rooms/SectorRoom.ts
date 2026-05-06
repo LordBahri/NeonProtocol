@@ -1,11 +1,11 @@
 import { Room, type Client } from 'colyseus';
-import { SectorSchema } from '../schemas/SectorSchema.js';
-import { ShipSchema } from '../schemas/ShipSchema.js';
-import { PhysicsSystem } from '../systems/PhysicsSystem.js';
-import { CombatSystem } from '../systems/CombatSystem.js';
-import { InterestManager } from '../systems/InterestManager.js';
-import { AISystem } from '../systems/AISystem.js';
-import { GameConfig } from '../config/GameConfig.js';
+import { SectorSchema } from '../schemas/SectorSchema';
+import { ShipSchema } from '../schemas/ShipSchema';
+import { PhysicsSystem } from '../systems/PhysicsSystem';
+import { CombatSystem } from '../systems/CombatSystem';
+import { InterestManager } from '../systems/InterestManager';
+import { AISystem } from '../systems/AISystem';
+import { GameConfig } from '../config/GameConfig';
 
 export interface SectorRoomOptions {
   sectorId: string;
