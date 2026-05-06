@@ -39,6 +39,10 @@ import { FogOfWar, ScanningSystem } from '../features/galaxy/FogOfWar.ts';
 import { FactionInfluence } from '../features/galaxy/FactionInfluence.ts';
 import { TrafficSystem } from '../features/galaxy/TrafficSystem.ts';
 import { GalaxyOverlay } from '../features/galaxy/GalaxyOverlay.ts';
+// ── Economy systems ────────────────────────────────────────────────────────────
+import { AsteroidResourceSystem, spawnAsteroidBelt } from '../features/economy/AsteroidResourceSystem.ts';
+import { HaulingSystem } from '../features/economy/HaulingSystem.ts';
+import { MarketTerminalUI } from '../features/economy/MarketTerminalUI.ts';
 
 export class GameScene extends Scene {
   readonly name = 'GameScene';
@@ -66,6 +70,10 @@ export class GameScene extends Scene {
   private factionSim!:   FactionInfluence;
   private trafficSys!:   TrafficSystem;
   private galaxyOverlay!: GalaxyOverlay;
+
+  // ── Economy simulation ────────────────────────────────────────────────────
+  private hauling!:       HaulingSystem;
+  private marketTerminal!: MarketTerminalUI;
 
   // Cinematic camera state — computed here, applied via engine.camera.setTarget
   private lookX = 0;
@@ -144,6 +152,13 @@ export class GameScene extends Scene {
       pipeline.app, galaxy, this.fog, this.factionSim, this.trafficSys,
     );
 
+    // ── Economy: hauling + market terminal ───────────────────────────────────
+    this.hauling       = new HaulingSystem(galaxy);
+    this.marketTerminal = new MarketTerminalUI(uiLayer, this.hauling);
+
+    // Spawn a test asteroid belt near the player start
+    spawnAsteroidBelt(world, 800, 0, 12, 1, 42);
+
     const localEntity = spawnShip(world, 'fighter', 0, 0, { isLocalPlayer: true, serverId: 'local' });
     useGameStore.getState().setLocalPlayer(localEntity, 'local');
 
@@ -203,6 +218,8 @@ export class GameScene extends Scene {
     // ── Simulation systems ────────────────────────────────────────────────────
     WeaponSystem.update(world, dt);
     CombatAI.update(world, dt);
+    AsteroidResourceSystem.update(world, dt);
+    this.marketTerminal.update(dt);
     this.factionSim.tick(dt);
     this.trafficSys.update(dt);
     this.scanner.update(dt, camX, camY);
@@ -267,6 +284,7 @@ export class GameScene extends Scene {
   }
 
   dispose(): void {
+    this.marketTerminal?.destroy();
     this.galaxyOverlay?.destroy();
     this.beamRenderer?.destroy();
     this.cinExplosion?.destroy();
