@@ -77,10 +77,10 @@ export class GameScene extends Scene {
     pipeline.app.stage.addChild(this.vignette.container);
 
     // Spawn ships near world origin so the starfield background is visible.
-    const localEntity = spawnShip(world, 'fighter', 0, 0, true, 'local');
+    const localEntity = spawnShip(world, 'fighter', 0, 0, { isLocalPlayer: true, serverId: 'local' });
     useGameStore.getState().setLocalPlayer(localEntity, 'local');
-    spawnShip(world, 'frigate',   300, -200, false, 'enemy1');
-    spawnShip(world, 'destroyer', -300,  200, false, 'enemy2');
+    spawnShip(world, 'frigate',   300, -200, { serverId: 'enemy1' });
+    spawnShip(world, 'destroyer', -300,  200, { serverId: 'enemy2' });
 
     useGameStore.getState().setPhase('playing');
 

@@ -31,7 +31,7 @@ export class ActionMap {
     heldKeys: ReadonlySet<string>,
     pressedKeys: ReadonlySet<string>,
     releasedKeys: ReadonlySet<string>,
-    axes: ReadonlyMap<string, number>,
+    _axes: ReadonlyMap<string, number>,
     gamepad: Gamepad | null,
   ): void {
     for (const [action, binding] of this.bindings) {

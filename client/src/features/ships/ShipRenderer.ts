@@ -11,8 +11,21 @@ import {
   VisualComponent,
   ShipStatsComponent,
   VelocityComponent,
-  NetworkSyncComponent,
+  PlayerInputComponent,
 } from './ShipComponents.ts';
+import {
+  HeatComponent,
+  FuelComponent,
+  ArmorComponent,
+  WarpDriveComponent,
+  DestructionComponent,
+} from './ShipSystemComponents.ts';
+import type { HeatData, FuelData, ArmorData } from './ShipSystemComponents.ts';
+import { ThrusterFX } from './ThrusterFX.ts';
+import { HULL_DEFINITIONS } from './ShipDefinitions.ts';
+import type { ParticleEmitter } from '../fx/ParticleEmitter.ts';
+import { globalBus, ShipEvent } from '../../core/network/MessageBus.ts';
+import type { ShipLifecycleEvent } from '../../core/network/MessageBus.ts';
 
 // Polygon vertex lists (x,y pairs, origin at ship center, nose points up = -y)
 const HULLS: Record<string, { pts: number[]; size: number; exhaustY: number }> = {
@@ -42,9 +55,12 @@ interface ShipDO {
   engCore:    Graphics;
   shieldRing: Graphics;
   healthBar:  Graphics;
+  warpRing:   Graphics;
   trail:      NeonTrail;
   hullSize:   number;
 }
+
+type ExplosionCallback = (x: number, y: number, scale: number) => void;
 
 function polyPath(g: Graphics, pts: number[]): void {
   g.moveTo(pts[0]!, pts[1]!);
@@ -57,28 +73,49 @@ export class ShipRenderer {
   private readonly shipsLayer: Container;
   private readonly trailLayer: Container;
   private time = 0;
+  private thrusterFX: ThrusterFX | null = null;
+  private onExplode: ExplosionCallback | null = null;
+  private unsubs: Array<() => void> = [];
 
-  constructor(pipeline: RenderPipeline) {
+  constructor(pipeline: RenderPipeline, emitter?: ParticleEmitter) {
     this.shipsLayer = pipeline.layers.get(RenderLayer.SHIPS);
     this.trailLayer = pipeline.layers.get(RenderLayer.FX_UNDER);
+
+    if (emitter) {
+      this.thrusterFX = new ThrusterFX(emitter);
+    }
+
+    const unsubExplode = globalBus.on<ShipLifecycleEvent>(ShipEvent.SHIP_EXPLODING, (evt) => {
+      if (this.onExplode) this.onExplode(evt.x, evt.y, 1.5);
+    });
+    this.unsubs.push(unsubExplode);
+  }
+
+  setExplosionCallback(cb: ExplosionCallback): void {
+    this.onExplode = cb;
   }
 
   syncWithWorld(world: World, alpha: number, dt: number): void {
     this.time += dt;
-    const entities = world.query(TransformComponent, VisualComponent);
+    const entities  = world.query(TransformComponent, VisualComponent);
     const activeSet = new Set<EntityId>();
 
     for (let i = 0; i < entities.length; i++) {
-      const entity = createEntityId(entities[i]!);
+      const entity     = createEntityId(entities[i]!);
       activeSet.add(entity);
 
-      const transform = world.getComponent(entity, TransformComponent)!;
-      const visual    = world.getComponent(entity, VisualComponent)!;
-      const stats     = world.getComponent(entity, ShipStatsComponent);
-      const velocity  = world.getComponent(entity, VelocityComponent);
-      const netSync   = world.getComponent(entity, NetworkSyncComponent);
+      const transform   = world.getComponent(entity, TransformComponent)!;
+      const visual      = world.getComponent(entity, VisualComponent)!;
+      const stats       = world.getComponent(entity, ShipStatsComponent);
+      const velocity    = world.getComponent(entity, VelocityComponent);
+      const input       = world.getComponent(entity, PlayerInputComponent);
+      const heat        = world.getComponent(entity, HeatComponent);
+      const fuel        = world.getComponent(entity, FuelComponent);
+      const armor       = world.getComponent(entity, ArmorComponent);
+      const warpDrive   = world.getComponent(entity, WarpDriveComponent);
+      const destruction = world.getComponent(entity, DestructionComponent);
 
-      const isLocal = netSync?.isLocalPlayer ?? false;
+      const isLocal = input !== undefined;
 
       let dobj = this.displayObjects.get(entity);
       if (!dobj) {
@@ -86,14 +123,20 @@ export class ShipRenderer {
         this.displayObjects.set(entity, dobj);
         this.shipsLayer.addChild(dobj.container);
         this.trailLayer.addChild(dobj.trail.container);
+
+        if (this.thrusterFX) {
+          const hullKey = visual.spriteKey.replace('ship_', '');
+          const hullDef = HULL_DEFINITIONS[hullKey] ?? HULL_DEFINITIONS['fighter']!;
+          this.thrusterFX.register(entity, hullDef.thrusters, dobj.container);
+        }
       }
 
       const rx = lerp(transform.prevX, transform.x, alpha);
       const ry = lerp(transform.prevY, transform.y, alpha);
       const ra = lerpAngle(transform.prevAngle, transform.angle, alpha);
 
-      dobj.container.x = rx;
-      dobj.container.y = ry;
+      dobj.container.x        = rx;
+      dobj.container.y        = ry;
       dobj.container.rotation = ra;
       dobj.container.scale.set(visual.scale);
 
@@ -101,18 +144,31 @@ export class ShipRenderer {
       dobj.trail.addPoint(rx, ry);
       dobj.trail.update(dt);
 
-      // Engine intensity
+      // Wreck / debris
+      const isWreck = visual.spriteKey === 'wreck' || visual.spriteKey === 'debris';
+      if (isWreck) {
+        dobj.container.alpha = visual.shieldGlowAlpha;
+        continue;
+      }
+
+      // Engine intensity from speed
       if (velocity) {
         const speed = Math.sqrt(velocity.vx ** 2 + velocity.vy ** 2);
         visual.engineGlowIntensity = lerp(visual.engineGlowIntensity, Math.min(speed / 400, 1), 0.12);
       }
-
-      const ePulse = 0.72 + 0.28 * Math.sin(this.time * 11 + entity);
+      const ePulse = 0.72 + 0.28 * Math.sin(this.time * 11 + (entity as number));
       dobj.engCone.alpha = visual.engineGlowIntensity * ePulse * 0.85;
       dobj.engCore.alpha = visual.engineGlowIntensity * ePulse;
+      if (heat?.isOverheated) {
+        dobj.engCore.tint = 0xff4400;
+        dobj.engCone.tint = 0xff4400;
+      } else {
+        dobj.engCore.tint = 0xffffff;
+        dobj.engCone.tint = 0xffffff;
+      }
 
-      // Slow atmospheric glow breathe
-      const breathe = 0.55 + 0.45 * Math.sin(this.time * 1.8 + entity * 0.7);
+      // Atmospheric glow breathe
+      const breathe = 0.55 + 0.45 * Math.sin(this.time * 1.8 + (entity as number) * 0.7);
       dobj.outerGlow.alpha = 0.18 + 0.10 * breathe;
       dobj.midGlow.alpha   = 0.28 + 0.14 * breathe;
 
@@ -124,21 +180,55 @@ export class ShipRenderer {
         dobj.body.tint = 0xffffff;
       }
 
-      // Shield and health bar
+      // Breached flicker
+      dobj.body.alpha = (destruction?.state === 'breached')
+        ? 0.6 + 0.4 * Math.sin(this.time * 20)
+        : 1;
+
+      // Shield ring + status bars
       if (stats) {
         const shieldFrac = stats.shield / stats.maxShield;
         const targetA = shieldFrac < 0.99 ? shieldFrac * 0.55 + 0.08 : 0;
         visual.shieldGlowAlpha = lerp(visual.shieldGlowAlpha, targetA, 0.06);
-        const sPulse = 0.7 + 0.3 * Math.sin(this.time * 4.5 + entity);
+        const sPulse = 0.7 + 0.3 * Math.sin(this.time * 4.5 + (entity as number));
         dobj.shieldRing.alpha = visual.shieldGlowAlpha * sPulse;
 
-        this.updateHealthBar(dobj.healthBar, stats.hull / stats.maxHull, shieldFrac, dobj.hullSize);
+        this.updateStatusBars(dobj.healthBar, stats.hull / stats.maxHull, shieldFrac, heat, fuel, armor, dobj.hullSize);
+      }
+
+      // Warp charge ring
+      if (warpDrive?.state === 'charging') {
+        this.updateWarpRing(dobj.warpRing, warpDrive.chargeTimer / warpDrive.chargeRequired);
+        dobj.warpRing.visible = true;
+      } else {
+        dobj.warpRing.visible = false;
+      }
+
+      // Thruster particles
+      if (this.thrusterFX) {
+        const hullKey = visual.spriteKey.replace('ship_', '');
+        const hullDef = HULL_DEFINITIONS[hullKey] ?? HULL_DEFINITIONS['fighter']!;
+        this.thrusterFX.update(
+          entity,
+          hullDef.thrusters,
+          {
+            ...(heat  ? { heat }  : {}),
+            ...(fuel  ? { fuel }  : {}),
+            ...(input ? { input } : {}),
+            thrustForward: input?.thrustForward ?? false,
+            thrustBack:    input?.thrustBack    ?? false,
+            rotateLeft:    input?.rotateLeft    ?? false,
+            rotateRight:   input?.rotateRight   ?? false,
+            boost:         input?.boost         ?? false,
+          },
+          rx, ry, ra, visual.scale, dt,
+        );
       }
     }
 
-    // Cull removed entities
     for (const [entity, dobj] of this.displayObjects) {
       if (!activeSet.has(entity)) {
+        if (this.thrusterFX) this.thrusterFX.unregister(entity, dobj.container);
         this.shipsLayer.removeChild(dobj.container);
         this.trailLayer.removeChild(dobj.trail.container);
         dobj.container.destroy({ children: true });
@@ -153,9 +243,9 @@ export class ShipRenderer {
     const hull = HULLS[shipClass] ?? HULLS['fighter']!;
     const { pts, size, exhaustY } = hull;
 
-    const glowColor = isLocal ? 0x00eeff : 0xff4400;
-    const bodyColor = isLocal ? 0x0d2a40 : 0x3a0d0d;
-    const rimColor  = isLocal ? 0x00ccff : 0xff6600;
+    const glowColor    = isLocal ? 0x00eeff : 0xff4400;
+    const bodyColor    = isLocal ? 0x0d2a40 : 0x3a0d0d;
+    const rimColor     = isLocal ? 0x00ccff : 0xff6600;
     const cockpitColor = isLocal ? 0x88ddff : 0xffaa66;
 
     const container = new Container();
@@ -176,7 +266,7 @@ export class ShipRenderer {
     midGlow.blendMode = 'add';
     container.addChild(midGlow);
 
-    // Engine cone — drawn below hull body so hull overlaps it
+    // Engine cone — drawn below hull body
     const engCone = new Graphics();
     const coneW = size * 0.30;
     const coneLen = size * 0.60;
@@ -190,19 +280,19 @@ export class ShipRenderer {
     engCone.alpha = 0;
     container.addChild(engCone);
 
-    // Layer 3: hull body
+    // Hull body
     const body = new Graphics();
     polyPath(body, pts);
     body.fill({ color: bodyColor });
     polyPath(body, pts);
     body.stroke({ color: rimColor, width: 1.4, alpha: 0.92 });
 
-    // Cockpit: small ellipse near nose
+    // Cockpit
     const cockpitR = size * 0.13;
     body.ellipse(0, -size * 0.38, cockpitR * 1.1, cockpitR);
     body.fill({ color: cockpitColor, alpha: 0.75 });
 
-    // Panel line hints on larger ships
+    // Panel line on larger ships
     if (size >= 30) {
       const mid = size * 0.25;
       body.moveTo(-size * 0.35, mid);
@@ -211,7 +301,7 @@ export class ShipRenderer {
     }
     container.addChild(body);
 
-    // Engine core (bright hot spot)
+    // Engine core hot spot
     const engCore = new Graphics();
     engCore.circle(0, exhaustY, size * 0.10);
     engCore.fill({ color: 0xffffff, alpha: 0.95 });
@@ -221,7 +311,7 @@ export class ShipRenderer {
     engCore.alpha = 0;
     container.addChild(engCore);
 
-    // Shield ring (two rings for thickness illusion)
+    // Shield ring (two rings for depth)
     const shieldRing = new Graphics();
     shieldRing.circle(0, 0, size * 1.20);
     shieldRing.stroke({ color: 0x44ddff, width: 1.8, alpha: 0.85 });
@@ -230,7 +320,12 @@ export class ShipRenderer {
     shieldRing.alpha = 0;
     container.addChild(shieldRing);
 
-    // Health bar below ship
+    // Warp charge ring
+    const warpRing = new Graphics();
+    warpRing.visible = false;
+    container.addChild(warpRing);
+
+    // Status bars
     const healthBar = new Graphics();
     healthBar.y = size + 9;
     container.addChild(healthBar);
@@ -244,29 +339,64 @@ export class ShipRenderer {
       additive: true,
     });
 
-    return { container, outerGlow, midGlow, body, engCone, engCore, shieldRing, healthBar, trail, hullSize: size };
+    return { container, outerGlow, midGlow, body, engCone, engCore, shieldRing, healthBar, warpRing, trail, hullSize: size };
   }
 
-  private updateHealthBar(g: Graphics, hullFrac: number, shieldFrac: number, size: number): void {
+  private updateStatusBars(
+    g: Graphics,
+    hullFrac: number,
+    shieldFrac: number,
+    heat: HeatData | undefined,
+    fuel: FuelData | undefined,
+    _armor: ArmorData | undefined,
+    size: number,
+  ): void {
     g.clear();
     const w = size * 2.1;
     const h = 3;
+    const gap = 2;
+    let row = 0;
 
-    g.rect(-w / 2, 0, w, h);
-    g.fill({ color: 0x060a10, alpha: 0.85 });
+    const drawBar = (frac: number, bg: number, fill: number): void => {
+      const y = row * (h + gap);
+      g.rect(-w / 2, y, w, h);
+      g.fill({ color: bg, alpha: 0.85 });
+      g.rect(-w / 2, y, w * Math.max(0, frac), h);
+      g.fill(fill);
+      row++;
+    };
 
     const hullColor = hullFrac > 0.5 ? 0x00ff55 : hullFrac > 0.25 ? 0xffaa00 : 0xff2200;
-    g.rect(-w / 2, 0, w * hullFrac, h);
-    g.fill(hullColor);
+    drawBar(hullFrac,   0x060a10, hullColor);
+    drawBar(shieldFrac, 0x060a10, 0x00aaff);
 
-    g.rect(-w / 2, h + 2, w, h - 1);
-    g.fill({ color: 0x060a10, alpha: 0.85 });
+    if (heat) {
+      const heatFrac  = heat.heat / heat.maxHeat;
+      const heatColor = heat.isOverheated ? 0xff2200 : heatFrac > 0.7 ? 0xff8800 : 0xffaa44;
+      drawBar(heatFrac, 0x060a10, heatColor);
+    }
 
-    g.rect(-w / 2, h + 2, w * shieldFrac, h - 1);
-    g.fill(0x00ccff);
+    if (fuel) {
+      drawBar(fuel.fuel / fuel.maxFuel, 0x060a10, 0xddcc00);
+    }
+  }
+
+  private updateWarpRing(g: Graphics, chargeFrac: number): void {
+    g.clear();
+    const r = 28 + chargeFrac * 6;
+    const segments = 12;
+    for (let s = 0; s < Math.round(segments * chargeFrac); s++) {
+      const a0 = (s / segments) * Math.PI * 2 - Math.PI / 2;
+      const a1 = ((s + 0.65) / segments) * Math.PI * 2 - Math.PI / 2;
+      g.arc(0, 0, r, a0, a1);
+    }
+    g.stroke({ color: 0xaa44ff, width: 2, alpha: 0.6 + 0.4 * chargeFrac });
+    g.blendMode = 'add';
   }
 
   destroy(): void {
+    for (const unsub of this.unsubs) unsub();
+    this.thrusterFX?.destroy();
     for (const dobj of this.displayObjects.values()) {
       dobj.container.destroy({ children: true });
       dobj.trail.container.destroy({ children: true });
