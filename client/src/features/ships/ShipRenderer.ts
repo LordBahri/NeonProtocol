@@ -34,20 +34,23 @@ import type { ShipLifecycleEvent } from '../../core/network/MessageBus.ts';
 
 // Polygon vertex lists (x,y pairs, origin at ship center, nose points up = -y)
 const HULLS: Record<string, { pts: number[]; size: number; exhaustY: number }> = {
+  // Angular delta-wing interceptor — swept shoulders, distinct wing panels
   fighter: {
-    pts: [0, -22, 9, -6, 15, 9, 6, 15, 0, 11, -6, 15, -15, 9, -9, -6],
+    pts: [0, -22, 3, -16, 5, -12, 12, -2, 14, 8, 10, 14, 3, 18, 0, 16, -3, 18, -10, 14, -14, 8, -12, -2, -5, -12, -3, -16],
     size: 22,
-    exhaustY: 13,
+    exhaustY: 16,
   },
+  // Patrol escort — elongated fuselage, wide swept wings
   frigate: {
-    pts: [0, -30, 10, -14, 18, 2, 15, 16, 7, 22, 0, 18, -7, 22, -15, 16, -18, 2, -10, -14],
+    pts: [0, -32, 4, -24, 7, -16, 14, -4, 18, 8, 16, 20, 8, 26, 0, 22, -8, 26, -16, 20, -18, 8, -14, -4, -7, -16, -4, -24],
     size: 30,
-    exhaustY: 18,
+    exhaustY: 22,
   },
+  // Heavy warship — wide armor flanks, pronounced engine pods, deep panel lines
   destroyer: {
-    pts: [0, -38, 12, -22, 22, -6, 22, 10, 14, 24, 0, 28, -14, 24, -22, 10, -22, -6, -12, -22],
+    pts: [0, -38, 6, -28, 12, -16, 22, -4, 24, 10, 22, 22, 16, 30, 6, 36, 0, 32, -6, 36, -16, 30, -22, 22, -24, 10, -22, -4, -12, -16, -6, -28],
     size: 38,
-    exhaustY: 24,
+    exhaustY: 28,
   },
   // Texture-mapped hull — polygon used for mask, outline, and thruster positions
   cruiser: {
@@ -59,9 +62,9 @@ const HULLS: Record<string, { pts: number[]; size: number; exhaustY: number }> =
 
 // Per-class nozzle positions (local space, y = exhaustY from HULLS)
 const NOZZLES: Record<string, Array<{ x: number; y: number }>> = {
-  fighter:   [{ x: 0, y: 13 }],
-  frigate:   [{ x: -5, y: 18 }, { x: 5, y: 18 }],
-  destroyer: [{ x: -8, y: 24 }, { x: 8, y: 24 }],
+  fighter:   [{ x: 0, y: 16 }],
+  frigate:   [{ x: -5, y: 22 }, { x: 5, y: 22 }],
+  destroyer: [{ x: -8, y: 28 }, { x: 8, y: 28 }],
   cruiser:   [{ x: -14, y: 30 }, { x: 14, y: 30 }],
 };
 
@@ -297,10 +300,13 @@ export class ShipRenderer {
     const { pts, size } = hull;
 
     const glowColor    = isLocal ? 0x00eeff : 0xff4400;
-    const bodyBase     = isLocal ? 0x0c1f32 : 0x261010;
-    const bodyLight    = isLocal ? 0x152940 : 0x321515;
-    const bodyDark     = isLocal ? 0x07101d : 0x1c0b0b;
-    const seamColor    = isLocal ? 0x050c14 : 0x0f0505;
+    // Five hull tones — base, lit face, specular face, shadow, deep recess
+    const bodyBase     = isLocal ? 0x1e3248 : 0x382012;  // dominant mid-tone
+    const bodyLight    = isLocal ? 0x2e4c70 : 0x5a3820;  // angled surfaces
+    const bodyBright   = isLocal ? 0x3e6082 : 0x7a5030;  // direct-lit faces
+    const bodyDark     = isLocal ? 0x0c1825 : 0x1a0e06;  // shadowed flanks/underside
+    const bodyRecess   = isLocal ? 0x060d16 : 0x100805;  // deep panel grooves / spine
+    const seamColor    = isLocal ? 0x04080e : 0x0c0604;  // near-black seam lines
     const rimColor     = isLocal ? 0x00ccff : 0xff6600;
     const circuitColor = isLocal ? 0x00eeff : 0xff6622;
     const cockpitColor = isLocal ? 0x88ddff : 0xffaa66;
@@ -372,7 +378,7 @@ export class ShipRenderer {
       nudge.addChild(hullSprites);
       body = this.buildCruiserOutline(pts, rimColor, cockpitColor);
     } else {
-      body = this.buildHullBody(shipClass, pts, size, bodyBase, bodyLight, bodyDark, seamColor, rimColor, cockpitColor);
+      body = this.buildHullBody(shipClass, pts, size, bodyBase, bodyLight, bodyBright, bodyDark, bodyRecess, seamColor, rimColor, cockpitColor);
     }
     nudge.addChild(body);
 
@@ -453,110 +459,173 @@ export class ShipRenderer {
 
   private buildHullBody(
     shipClass: string,
-    pts: number[],
-    size: number,
-    base: number,
-    light: number,
-    dark: number,
-    seam: number,
-    rim: number,
-    cockpit: number,
+    pts:       number[],
+    size:      number,
+    base:      number,
+    light:     number,
+    bright:    number,
+    dark:      number,
+    recess:    number,
+    seam:      number,
+    rim:       number,
+    cockpit:   number,
   ): Graphics {
     const g = new Graphics();
 
-    // Base hull fill
+    // Base hull fill — fills the whole silhouette first
     polyPath(g, pts);
     g.fill({ color: base });
 
     if (shipClass === 'fighter') {
-      // Nose panel — lighter
-      g.moveTo(0, -22); g.lineTo(9, -6); g.lineTo(-9, -6); g.closePath();
-      g.fill({ color: light, alpha: 0.60 });
-      // Right wing — darker
-      g.moveTo(9, -6); g.lineTo(15, 9); g.lineTo(6, 15); g.lineTo(0, 11); g.closePath();
+      // ── Bright nose wedge (direct starlight, forward-facing) ──
+      g.moveTo(0, -22); g.lineTo(5, -12); g.lineTo(-5, -12); g.closePath();
+      g.fill({ color: bright, alpha: 0.70 });
+
+      // ── Upper body panels flanking spine (angled lit surfaces) ──
+      g.moveTo(3, -16); g.lineTo(5, -12); g.lineTo(11, -2); g.lineTo(4, -2); g.closePath();
+      g.fill({ color: light, alpha: 0.52 });
+      g.moveTo(-3, -16); g.lineTo(-5, -12); g.lineTo(-11, -2); g.lineTo(-4, -2); g.closePath();
+      g.fill({ color: light, alpha: 0.52 });
+
+      // ── Wing panels (angled away from top light — darker) ──
+      g.moveTo(11, -2); g.lineTo(14, 8); g.lineTo(10, 14); g.lineTo(5, 8); g.lineTo(4, -2); g.closePath();
+      g.fill({ color: dark, alpha: 0.60 });
+      g.moveTo(-11, -2); g.lineTo(-14, 8); g.lineTo(-10, 14); g.lineTo(-5, 8); g.lineTo(-4, -2); g.closePath();
+      g.fill({ color: dark, alpha: 0.60 });
+
+      // ── Central spine channel — runs nose to tail ──
+      g.rect(-2, -22, 4, 36);
+      g.fill({ color: recess, alpha: 0.78 });
+
+      // ── Aft engine bay ──
+      g.moveTo(-3, 10); g.lineTo(3, 10); g.lineTo(3, 16); g.lineTo(-3, 16); g.closePath();
       g.fill({ color: dark, alpha: 0.55 });
-      // Left wing mirror
-      g.moveTo(-9, -6); g.lineTo(-15, 9); g.lineTo(-6, 15); g.lineTo(0, 11); g.closePath();
-      g.fill({ color: dark, alpha: 0.55 });
-      // Panel seams
-      g.moveTo(0, -22); g.lineTo(0, 11);
-      g.moveTo(0, -2);  g.lineTo(9, -6);
-      g.moveTo(0, -2);  g.lineTo(-9, -6);
-      g.stroke({ color: seam, width: 0.7, alpha: 0.92 });
-      // Scratches
-      g.moveTo(5, 2);   g.lineTo(12, 7);
-      g.moveTo(-7, -3); g.lineTo(-13, 3);
-      g.stroke({ color: 0x000000, width: 0.5, alpha: 0.55 });
-      // Armor ridge accent
-      g.moveTo(-4, -16); g.lineTo(4, -16);
-      g.stroke({ color: rim, width: 0.6, alpha: 0.18 });
+
+      // ── Structural seam lines ──
+      g.moveTo(-5, -12); g.lineTo(5, -12);    // nose-body shoulder
+      g.moveTo(-11, -2); g.lineTo(11, -2);    // body-wing band
+      g.moveTo(-4, 8);   g.lineTo(4, 8);      // aft band
+      g.stroke({ color: seam, width: 0.85, alpha: 0.92 });
+      g.moveTo(4, -2); g.lineTo(14, 8);
+      g.moveTo(-4, -2); g.lineTo(-14, 8);
+      g.stroke({ color: seam, width: 0.65, alpha: 0.80 });
+      g.moveTo(0, -22); g.lineTo(0, 14);
+      g.stroke({ color: seam, width: 0.55, alpha: 0.85 });
+
+      // ── Battle scratches ──
+      g.moveTo(6, -5); g.lineTo(11, 1);
+      g.moveTo(-8, 2); g.lineTo(-12, 8);
+      g.stroke({ color: 0x000000, width: 0.45, alpha: 0.50 });
+
+      // ── Armor ridge accent ──
+      g.moveTo(-4, -18); g.lineTo(4, -18);
+      g.stroke({ color: rim, width: 0.6, alpha: 0.22 });
 
     } else if (shipClass === 'frigate') {
-      // Nose panel
-      g.moveTo(0, -30); g.lineTo(10, -14); g.lineTo(-10, -14); g.closePath();
-      g.fill({ color: light, alpha: 0.58 });
-      // Right flank
-      g.moveTo(10, -14); g.lineTo(18, 2); g.lineTo(15, 16); g.lineTo(7, 22); g.lineTo(0, 18); g.closePath();
-      g.fill({ color: dark, alpha: 0.48 });
-      // Left flank mirror
-      g.moveTo(-10, -14); g.lineTo(-18, 2); g.lineTo(-15, 16); g.lineTo(-7, 22); g.lineTo(0, 18); g.closePath();
-      g.fill({ color: dark, alpha: 0.48 });
-      // Horizontal seam bands
-      g.moveTo(-18, 2); g.lineTo(18, 2);
-      g.moveTo(-15, 16); g.lineTo(15, 16);
-      g.stroke({ color: seam, width: 0.8, alpha: 0.90 });
-      // Centerline + shoulder seams
-      g.moveTo(0, -30); g.lineTo(0, 18);
-      g.moveTo(0, -8);  g.lineTo(10, -14);
-      g.moveTo(0, -8);  g.lineTo(-10, -14);
-      g.stroke({ color: seam, width: 0.7, alpha: 0.85 });
-      // Scratches
-      g.moveTo(8, -5);  g.lineTo(15, 3);
-      g.moveTo(-6, 8);  g.lineTo(-14, 13);
-      g.moveTo(3, 14);  g.lineTo(9, 20);
-      g.stroke({ color: 0x000000, width: 0.5, alpha: 0.50 });
-      // Armor ridges
-      g.moveTo(-5, -22);  g.lineTo(5, -22);
-      g.moveTo(-12, 2);   g.lineTo(12, 2);
-      g.stroke({ color: rim, width: 0.6, alpha: 0.15 });
+      // ── Bright nose cap ──
+      g.moveTo(0, -32); g.lineTo(7, -16); g.lineTo(-7, -16); g.closePath();
+      g.fill({ color: bright, alpha: 0.68 });
+
+      // ── Upper body panels (shoulder → wing root) ──
+      g.moveTo(4, -24); g.lineTo(7, -16); g.lineTo(14, -4); g.lineTo(6, -4); g.closePath();
+      g.fill({ color: light, alpha: 0.52 });
+      g.moveTo(-4, -24); g.lineTo(-7, -16); g.lineTo(-14, -4); g.lineTo(-6, -4); g.closePath();
+      g.fill({ color: light, alpha: 0.52 });
+
+      // ── Wing panels (dark flanks) ──
+      g.moveTo(14, -4); g.lineTo(18, 8); g.lineTo(16, 20); g.lineTo(8, 20); g.lineTo(6, -4); g.closePath();
+      g.fill({ color: dark, alpha: 0.56 });
+      g.moveTo(-14, -4); g.lineTo(-18, 8); g.lineTo(-16, 20); g.lineTo(-8, 20); g.lineTo(-6, -4); g.closePath();
+      g.fill({ color: dark, alpha: 0.56 });
+
+      // ── Central spine channel ──
+      g.rect(-2.5, -32, 5, 52);
+      g.fill({ color: recess, alpha: 0.76 });
+
+      // ── Aft engine bay ──
+      g.moveTo(-5, 18); g.lineTo(5, 18); g.lineTo(4, 22); g.lineTo(-4, 22); g.closePath();
+      g.fill({ color: dark, alpha: 0.52 });
+
+      // ── Structural seam lines ──
+      g.moveTo(-7, -16); g.lineTo(7, -16);     // nose-body
+      g.moveTo(-14, -4); g.lineTo(14, -4);     // upper-wing band
+      g.moveTo(-8, 18);  g.lineTo(8, 18);      // body-aft
+      g.stroke({ color: seam, width: 0.85, alpha: 0.90 });
+      g.moveTo(6, -4); g.lineTo(18, 8);
+      g.moveTo(-6, -4); g.lineTo(-18, 8);
+      g.stroke({ color: seam, width: 0.65, alpha: 0.78 });
+      g.moveTo(0, -32); g.lineTo(0, 20);
+      g.stroke({ color: seam, width: 0.60, alpha: 0.88 });
+      g.moveTo(0, -16); g.lineTo(7, -16);
+      g.moveTo(0, -16); g.lineTo(-7, -16);
+      g.stroke({ color: seam, width: 0.55, alpha: 0.75 });
+
+      // ── Battle scratches ──
+      g.moveTo(9, -8); g.lineTo(14, 0);
+      g.moveTo(-6, 5); g.lineTo(-14, 12);
+      g.moveTo(4, 14); g.lineTo(9, 20);
+      g.stroke({ color: 0x000000, width: 0.45, alpha: 0.48 });
+
+      // ── Armor ridges ──
+      g.moveTo(-5, -24); g.lineTo(5, -24);
+      g.moveTo(-12, -4); g.lineTo(12, -4);
+      g.stroke({ color: rim, width: 0.6, alpha: 0.17 });
 
     } else { // destroyer
-      // Nose panel
-      g.moveTo(0, -38); g.lineTo(12, -22); g.lineTo(-12, -22); g.closePath();
-      g.fill({ color: light, alpha: 0.58 });
-      // Upper right flank
-      g.moveTo(12, -22); g.lineTo(22, -6); g.lineTo(22, 10); g.lineTo(0, 0); g.closePath();
-      g.fill({ color: dark, alpha: 0.42 });
-      // Upper left flank mirror
-      g.moveTo(-12, -22); g.lineTo(-22, -6); g.lineTo(-22, 10); g.lineTo(0, 0); g.closePath();
-      g.fill({ color: dark, alpha: 0.42 });
-      // Lower engine pods (slightly lighter — heat-worn plating)
-      g.moveTo(22, 10); g.lineTo(14, 24); g.lineTo(0, 28); g.lineTo(0, 14); g.closePath();
-      g.fill({ color: light, alpha: 0.22 });
-      g.moveTo(-22, 10); g.lineTo(-14, 24); g.lineTo(0, 28); g.lineTo(0, 14); g.closePath();
-      g.fill({ color: light, alpha: 0.22 });
-      // Horizontal seam bands
-      g.moveTo(-22, -6); g.lineTo(22, -6);
-      g.moveTo(-22, 10); g.lineTo(22, 10);
-      g.stroke({ color: seam, width: 0.90, alpha: 0.92 });
-      // Centerline + shoulder seams
-      g.moveTo(0, -38); g.lineTo(0, 28);
-      g.moveTo(0, -16); g.lineTo(12, -22);
-      g.moveTo(0, -16); g.lineTo(-12, -22);
-      g.moveTo(0, 4);   g.lineTo(22, -6);
-      g.moveTo(0, 4);   g.lineTo(-22, -6);
-      g.stroke({ color: seam, width: 0.70, alpha: 0.75 });
-      // Scratches / micro battle-damage
-      g.moveTo(10, -15); g.lineTo(18, -8);
-      g.moveTo(-8, 3);   g.lineTo(-18, 9);
-      g.moveTo(5, 18);   g.lineTo(12, 23);
-      g.moveTo(-12, -10); g.lineTo(-20, -3);
-      g.stroke({ color: 0x000000, width: 0.6, alpha: 0.50 });
-      // Armor ridges
-      g.moveTo(-8, -30);  g.lineTo(8, -30);
-      g.moveTo(-15, -6);  g.lineTo(15, -6);
-      g.moveTo(-10, 10);  g.lineTo(10, 10);
-      g.stroke({ color: rim, width: 0.7, alpha: 0.15 });
+      // ── Broad bright nose ──
+      g.moveTo(0, -38); g.lineTo(12, -16); g.lineTo(-12, -16); g.closePath();
+      g.fill({ color: bright, alpha: 0.66 });
+
+      // ── Upper shoulder panels ──
+      g.moveTo(6, -28); g.lineTo(12, -16); g.lineTo(22, -4); g.lineTo(10, -4); g.closePath();
+      g.fill({ color: light, alpha: 0.52 });
+      g.moveTo(-6, -28); g.lineTo(-12, -16); g.lineTo(-22, -4); g.lineTo(-10, -4); g.closePath();
+      g.fill({ color: light, alpha: 0.52 });
+
+      // ── Main wing/armor flanks ──
+      g.moveTo(22, -4); g.lineTo(24, 10); g.lineTo(22, 22); g.lineTo(12, 22); g.lineTo(10, -4); g.closePath();
+      g.fill({ color: dark, alpha: 0.55 });
+      g.moveTo(-22, -4); g.lineTo(-24, 10); g.lineTo(-22, 22); g.lineTo(-12, 22); g.lineTo(-10, -4); g.closePath();
+      g.fill({ color: dark, alpha: 0.55 });
+
+      // ── Engine pod sections (heat-worn, slightly lighter) ──
+      g.moveTo(16, 22); g.lineTo(16, 30); g.lineTo(6, 36); g.lineTo(6, 26); g.closePath();
+      g.fill({ color: light, alpha: 0.20 });
+      g.moveTo(-16, 22); g.lineTo(-16, 30); g.lineTo(-6, 36); g.lineTo(-6, 26); g.closePath();
+      g.fill({ color: light, alpha: 0.20 });
+
+      // ── Central spine channel ──
+      g.rect(-2.8, -38, 5.6, 68);
+      g.fill({ color: recess, alpha: 0.75 });
+
+      // ── Structural seam lines ──
+      g.moveTo(-12, -16); g.lineTo(12, -16);    // nose-shoulder
+      g.moveTo(-22, -4);  g.lineTo(22, -4);     // shoulder-wing
+      g.moveTo(-22, 22);  g.lineTo(22, 22);     // wing-pod
+      g.stroke({ color: seam, width: 0.95, alpha: 0.92 });
+      g.moveTo(10, -4); g.lineTo(24, 10);
+      g.moveTo(-10, -4); g.lineTo(-24, 10);
+      g.stroke({ color: seam, width: 0.72, alpha: 0.80 });
+      g.moveTo(6, 26); g.lineTo(16, 26);
+      g.moveTo(-6, 26); g.lineTo(-16, 26);
+      g.stroke({ color: seam, width: 0.70, alpha: 0.82 });
+      g.moveTo(0, -38); g.lineTo(0, 32);
+      g.moveTo(0, -22); g.lineTo(6, -28);
+      g.moveTo(0, -22); g.lineTo(-6, -28);
+      g.stroke({ color: seam, width: 0.70, alpha: 0.78 });
+
+      // ── Battle scratches ──
+      g.moveTo(10, -12); g.lineTo(18, -4);
+      g.moveTo(-8, 4);   g.lineTo(-18, 12);
+      g.moveTo(5, 18);   g.lineTo(12, 24);
+      g.moveTo(-12, -8); g.lineTo(-20, -1);
+      g.stroke({ color: 0x000000, width: 0.55, alpha: 0.48 });
+
+      // ── Armor ridges ──
+      g.moveTo(-8, -30); g.lineTo(8, -30);
+      g.moveTo(-16, -4); g.lineTo(16, -4);
+      g.moveTo(-10, 10); g.lineTo(10, 10);
+      g.stroke({ color: rim, width: 0.70, alpha: 0.16 });
     }
 
     // Rim outline
@@ -581,67 +650,67 @@ export class ShipRenderer {
     g.blendMode = 'add';
 
     if (shipClass === 'fighter') {
-      // Central spine
-      g.moveTo(0, -18); g.lineTo(0, 8);
+      // Spine trace along central channel
+      g.moveTo(0, -18); g.lineTo(0, 10);
       g.stroke({ color, width: 0.8, alpha: 0.55 });
-      // Side power branches
-      g.moveTo(0, -10); g.lineTo(7, -4);
-      g.moveTo(0, -10); g.lineTo(-7, -4);
-      g.moveTo(0, 0);   g.lineTo(9, 5);
-      g.moveTo(0, 0);   g.lineTo(-9, 5);
+      // Wing-root power branches at body-wing junction (y≈-2)
+      g.moveTo(0, -10); g.lineTo(8, -4);
+      g.moveTo(0, -10); g.lineTo(-8, -4);
+      g.moveTo(0, 2);   g.lineTo(9, 7);
+      g.moveTo(0, 2);   g.lineTo(-9, 7);
       g.stroke({ color, width: 0.5, alpha: 0.40 });
       // Junction nodes
-      g.circle(0, -10, 1.2);  g.fill({ color, alpha: 0.72 });
-      g.circle(0, 0,   1.0);  g.fill({ color, alpha: 0.65 });
-      g.circle(7, -4,  0.8);  g.fill({ color, alpha: 0.50 });
-      g.circle(-7, -4, 0.8);  g.fill({ color, alpha: 0.50 });
+      g.circle(0, -10, 1.2); g.fill({ color, alpha: 0.72 });
+      g.circle(0,   2, 1.0); g.fill({ color, alpha: 0.65 });
+      g.circle( 8,  -4, 0.8); g.fill({ color, alpha: 0.50 });
+      g.circle(-8,  -4, 0.8); g.fill({ color, alpha: 0.50 });
 
     } else if (shipClass === 'frigate') {
-      // Central spine
-      g.moveTo(0, -26); g.lineTo(0, 12);
+      // Spine trace
+      g.moveTo(0, -28); g.lineTo(0, 14);
       g.stroke({ color, width: 0.9, alpha: 0.55 });
-      // Lateral cross-connect rings
-      g.moveTo(-14, -5);  g.lineTo(14, -5);
-      g.moveTo(-12, 8);   g.lineTo(12, 8);
+      // Lateral cross-rings aligned to seam bands (y≈-4, y≈8)
+      g.moveTo(-12, -4); g.lineTo(12, -4);
+      g.moveTo(-10,  8); g.lineTo(10,  8);
       g.stroke({ color, width: 0.5, alpha: 0.32 });
-      // Diagonal branches
-      g.moveTo(0, -14);  g.lineTo(8, -8);
-      g.moveTo(0, -14);  g.lineTo(-8, -8);
-      g.moveTo(0, -5);   g.lineTo(12, 2);
-      g.moveTo(0, -5);   g.lineTo(-12, 2);
+      // Diagonal branches to wing roots
+      g.moveTo(0, -16); g.lineTo(9, -10);
+      g.moveTo(0, -16); g.lineTo(-9, -10);
+      g.moveTo(0,  -4); g.lineTo(12, 2);
+      g.moveTo(0,  -4); g.lineTo(-12, 2);
       g.stroke({ color, width: 0.5, alpha: 0.40 });
       // Junction nodes
-      g.circle(0, -14,  1.4);  g.fill({ color, alpha: 0.72 });
-      g.circle(0, -5,   1.1);  g.fill({ color, alpha: 0.65 });
-      g.circle(0,  8,   1.0);  g.fill({ color, alpha: 0.55 });
-      g.circle(8, -8,   0.9);  g.fill({ color, alpha: 0.45 });
-      g.circle(-8, -8,  0.9);  g.fill({ color, alpha: 0.45 });
+      g.circle(0, -16, 1.4); g.fill({ color, alpha: 0.72 });
+      g.circle(0,  -4, 1.1); g.fill({ color, alpha: 0.65 });
+      g.circle(0,   8, 1.0); g.fill({ color, alpha: 0.55 });
+      g.circle( 9, -10, 0.9); g.fill({ color, alpha: 0.45 });
+      g.circle(-9, -10, 0.9); g.fill({ color, alpha: 0.45 });
 
     } else { // destroyer — heaviest detail
-      // Central spine
-      g.moveTo(0, -32); g.lineTo(0, 18);
+      // Spine trace
+      g.moveTo(0, -34); g.lineTo(0, 20);
       g.stroke({ color, width: 1.0, alpha: 0.55 });
-      // Lateral cross-bars
-      g.moveTo(-18, -6);  g.lineTo(18, -6);
-      g.moveTo(-16, 8);   g.lineTo(16, 8);
-      g.moveTo(-8, -20);  g.lineTo(8, -20);
+      // Lateral cross-bars at seam bands (y≈-4, y≈10, y≈-20)
+      g.moveTo(-18, -4);  g.lineTo(18, -4);
+      g.moveTo(-16, 10);  g.lineTo(16, 10);
+      g.moveTo(-8,  -20); g.lineTo(8, -20);
       g.stroke({ color, width: 0.5, alpha: 0.30 });
-      // Diagonal branches to flanks
-      g.moveTo(0, -20);  g.lineTo(10, -14);
-      g.moveTo(0, -20);  g.lineTo(-10, -14);
-      g.moveTo(0, -6);   g.lineTo(16, -1);
-      g.moveTo(0, -6);   g.lineTo(-16, -1);
-      g.moveTo(0, 8);    g.lineTo(12, 14);
-      g.moveTo(0, 8);    g.lineTo(-12, 14);
+      // Diagonal branches to armor flanks
+      g.moveTo(0, -20); g.lineTo(10, -14);
+      g.moveTo(0, -20); g.lineTo(-10, -14);
+      g.moveTo(0,  -4); g.lineTo(18,  2);
+      g.moveTo(0,  -4); g.lineTo(-18, 2);
+      g.moveTo(0,  10); g.lineTo(14, 16);
+      g.moveTo(0,  10); g.lineTo(-14, 16);
       g.stroke({ color, width: 0.5, alpha: 0.40 });
       // Junction nodes
-      g.circle(0, -20,  1.6);   g.fill({ color, alpha: 0.72 });
-      g.circle(0, -6,   1.3);   g.fill({ color, alpha: 0.65 });
-      g.circle(0,  8,   1.1);   g.fill({ color, alpha: 0.60 });
-      g.circle(10, -14, 1.0);   g.fill({ color, alpha: 0.50 });
-      g.circle(-10, -14, 1.0);  g.fill({ color, alpha: 0.50 });
-      g.circle(16, -1,  0.9);   g.fill({ color, alpha: 0.45 });
-      g.circle(-16, -1, 0.9);   g.fill({ color, alpha: 0.45 });
+      g.circle(0,  -20, 1.6);  g.fill({ color, alpha: 0.72 });
+      g.circle(0,   -4, 1.3);  g.fill({ color, alpha: 0.65 });
+      g.circle(0,   10, 1.1);  g.fill({ color, alpha: 0.60 });
+      g.circle( 10, -14, 1.0); g.fill({ color, alpha: 0.50 });
+      g.circle(-10, -14, 1.0); g.fill({ color, alpha: 0.50 });
+      g.circle( 18,   2, 0.9); g.fill({ color, alpha: 0.45 });
+      g.circle(-18,   2, 0.9); g.fill({ color, alpha: 0.45 });
     }
 
     return g;
