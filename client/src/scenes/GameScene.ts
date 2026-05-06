@@ -4,6 +4,7 @@ import type { RenderPipeline } from '../core/renderer/RenderPipeline.ts';
 import { RenderLayer } from '../core/renderer/LayerManager.ts';
 import { engine } from '../Engine.ts';
 import { BackgroundRenderer } from '../features/space/BackgroundRenderer.ts';
+import { AsteroidField } from '../features/space/AsteroidField.ts';
 import { SectorGrid } from '../features/space/SectorGrid.ts';
 import { ChunkManager } from '../features/space/ChunkManager.ts';
 import { ShipRenderer } from '../features/ships/ShipRenderer.ts';
@@ -11,6 +12,7 @@ import { EffectsManager } from '../features/fx/EffectsManager.ts';
 import { ProjectilePool } from '../features/combat/ProjectilePool.ts';
 import { HUD } from '../features/ui/HUD.ts';
 import { Minimap } from '../features/ui/Minimap.ts';
+import { VignetteOverlay } from '../features/fx/VignetteOverlay.ts';
 import { spawnShip } from '../features/ships/ShipFactory.ts';
 import {
   TransformComponent,
@@ -26,6 +28,8 @@ export class GameScene extends Scene {
   readonly name = 'GameScene';
 
   private background!: BackgroundRenderer;
+  private asteroidField!: AsteroidField;
+  private vignette!: VignetteOverlay;
   private sectorGrid!: SectorGrid;
   private chunkManager!: ChunkManager;
   private shipRenderer!: ShipRenderer;
@@ -36,10 +40,15 @@ export class GameScene extends Scene {
 
   async onEnter(_from: Scene | null): Promise<void> {
     const { pipeline, world } = engine;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
 
     // Background — starfield/nebula generated around world origin (0,0)
     this.background = new BackgroundRenderer(pipeline);
-    this.background.init(window.innerWidth, window.innerHeight);
+    this.background.init(w, h);
+
+    // Procedural asteroid field scattered around world origin
+    this.asteroidField = new AsteroidField(pipeline, 40, 777);
 
     this.sectorGrid = new SectorGrid(2000, 10, 10);
     this.chunkManager = new ChunkManager({
@@ -61,7 +70,11 @@ export class GameScene extends Scene {
     // transforms on worldContainer do not displace it.
     this.minimap = new Minimap();
     pipeline.app.stage.addChild(this.minimap.container);
-    this.minimap.positionBottomRight(window.innerWidth, window.innerHeight);
+    this.minimap.positionBottomRight(w, h);
+
+    // Vignette overlaid on top of everything (screen-space)
+    this.vignette = new VignetteOverlay(w, h);
+    pipeline.app.stage.addChild(this.vignette.container);
 
     // Spawn ships near world origin so the starfield background is visible.
     const localEntity = spawnShip(world, 'fighter', 0, 0, true, 'local');
@@ -100,6 +113,7 @@ export class GameScene extends Scene {
     }
 
     this.background.update(camX, camY, dt);
+    this.asteroidField.update(dt);
     this.chunkManager.update(camX, camY);
     this.shipRenderer.syncWithWorld(world, alpha, dt);
     this.effectsManager.update(dt);
@@ -115,6 +129,7 @@ export class GameScene extends Scene {
 
   onResize(width: number, height: number): void {
     this.minimap?.positionBottomRight(width, height);
+    this.vignette?.resize(width, height);
   }
 
   private subscribeEvents(): void {
@@ -143,6 +158,9 @@ export class GameScene extends Scene {
   dispose(): void {
     this.effectsManager?.destroy();
     this.shipRenderer?.destroy();
+    this.asteroidField?.destroy();
+    this.background?.destroy();
+    this.vignette?.destroy();
     this.hud?.destroy();
     this.minimap?.container.destroy({ children: true });
     globalBus.clear();
