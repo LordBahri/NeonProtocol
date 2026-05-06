@@ -1,10 +1,11 @@
-import { Container, Graphics } from 'pixi.js';
+import { Container, Graphics, Sprite } from 'pixi.js';
 import { gsap } from 'gsap';
 import type { World } from '../../core/ecs/World.ts';
 import { createEntityId } from '../../core/ecs/types.ts';
 import type { EntityId } from '../../core/ecs/types.ts';
 import type { RenderPipeline } from '../../core/renderer/RenderPipeline.ts';
 import { ThrusterFilter } from './ThrusterFilter.ts';
+import { engine } from '../../Engine.ts';
 import { RenderLayer } from '../../core/renderer/LayerManager.ts';
 import { lerp, lerpAngle } from '../../core/simulation/interpolation.ts';
 import { NeonTrail } from '../fx/NeonTrail.ts';
@@ -46,6 +47,12 @@ const HULLS: Record<string, { pts: number[]; size: number; exhaustY: number }> =
     size: 38,
     exhaustY: 24,
   },
+  // Texture-mapped hull — polygon used for mask, outline, and thruster positions
+  cruiser: {
+    pts: [0, -52, 16, -38, 28, -16, 30, 4, 26, 20, 16, 32, 0, 36, -16, 32, -26, 20, -30, 4, -28, -16, -16, -38],
+    size: 52,
+    exhaustY: 30,
+  },
 };
 
 // Per-class nozzle positions (local space, y = exhaustY from HULLS)
@@ -53,6 +60,7 @@ const NOZZLES: Record<string, Array<{ x: number; y: number }>> = {
   fighter:   [{ x: 0, y: 13 }],
   frigate:   [{ x: -5, y: 18 }, { x: 5, y: 18 }],
   destroyer: [{ x: -8, y: 24 }, { x: 8, y: 24 }],
+  cruiser:   [{ x: -14, y: 30 }, { x: 14, y: 30 }],
 };
 
 interface ShipDO {
@@ -72,6 +80,10 @@ interface ShipDO {
   trail:          NeonTrail;
   hullSize:       number;
   tweens:         gsap.core.Tween[];
+  // Texture-mapped hull layers (cruiser only — undefined on procedural ships)
+  hullSprites?:   Container;        // masked container: albedo + roughness + emissive
+  hullEmissive?:  Sprite;           // the additive pass, needs faction tint reset after damage flash
+  isLocal:        boolean;
 }
 
 type ExplosionCallback = (x: number, y: number, scale: number) => void;
@@ -200,14 +212,18 @@ export class ShipRenderer {
       if (visual.damageFlashTimer > 0) {
         visual.damageFlashTimer -= dt;
         dobj.body.tint = 0xff6655;
+        if (dobj.hullEmissive) dobj.hullEmissive.tint = 0xff2200;
       } else {
         dobj.body.tint = 0xffffff;
+        if (dobj.hullEmissive) dobj.hullEmissive.tint = isLocal ? 0x00eeff : 0xff8844;
       }
 
       // Breached flicker
-      dobj.body.alpha = (destruction?.state === 'breached')
+      const breachAlpha = (destruction?.state === 'breached')
         ? 0.6 + 0.4 * Math.sin(this.time * 20)
         : 1;
+      dobj.body.alpha = breachAlpha;
+      if (dobj.hullSprites) dobj.hullSprites.alpha = breachAlpha;
 
       // Shield ring
       if (stats) {
@@ -330,8 +346,20 @@ export class ShipRenderer {
     const nudge = new Container();
     container.addChild(nudge);
 
-    // Hull body: main fill + per-class panel zones + seams + rim
-    const body = this.buildHullBody(shipClass, pts, size, bodyBase, bodyLight, bodyDark, seamColor, rimColor, cockpitColor);
+    // Cruiser uses PBR-style sprite layers; other ships use procedural Graphics.
+    let hullSprites: Container | undefined;
+    let hullEmissive: Sprite | undefined;
+    let body: Graphics;
+
+    if (shipClass === 'cruiser') {
+      const layers = this.buildCruiserLayers(pts, size, isLocal);
+      hullSprites  = layers.container;
+      hullEmissive = layers.emissive;
+      nudge.addChild(hullSprites);
+      body = this.buildCruiserOutline(pts, rimColor, cockpitColor);
+    } else {
+      body = this.buildHullBody(shipClass, pts, size, bodyBase, bodyLight, bodyDark, seamColor, rimColor, cockpitColor);
+    }
     nudge.addChild(body);
 
     // Emissive circuitry (additive power conduit traces) — GSAP pulses alpha
@@ -398,7 +426,14 @@ export class ShipRenderer {
       gsap.to(circuitry, { alpha: 1.0, duration: 0.65, repeat: -1, yoyo: true, ease: 'sine.inOut' }),
     );
 
-    return { container, outerGlow, midGlow, nudge, body, circuitry, engCone, exhaustBloom, engCore, thrusterFilter, shieldRing, healthBar, warpRing, trail, hullSize: size, tweens };
+    return {
+      container, outerGlow, midGlow, nudge, body, circuitry,
+      engCone, exhaustBloom, engCore, thrusterFilter,
+      shieldRing, healthBar, warpRing, trail,
+      hullSize: size, tweens, isLocal,
+      ...(hullSprites  ? { hullSprites }  : {}),
+      ...(hullEmissive ? { hullEmissive } : {}),
+    };
   }
 
   private buildHullBody(
@@ -594,6 +629,72 @@ export class ShipRenderer {
       g.circle(-16, -1, 0.9);   g.fill({ color, alpha: 0.45 });
     }
 
+    return g;
+  }
+
+  // ── Texture-mapped cruiser ───────────────────────────────────────────────────
+
+  private buildCruiserLayers(
+    pts: number[],
+    size: number,
+    isLocal: boolean,
+  ): { container: Container; emissive: Sprite } {
+    // Bounding box of the hull polygon: 60px wide × 88px tall, center at y = -8
+    const spriteSize = size * 1.75; // square, covers hull bbox with small margin
+    const spriteCY   = -size * 0.15;
+
+    // Hull-shaped stencil mask — clips all sprites to the polygon silhouette
+    const maskGfx = new Graphics();
+    polyPath(maskGfx, pts);
+    maskGfx.fill({ color: 0xffffff, alpha: 1 });
+
+    const masked = new Container();
+    masked.mask = maskGfx;
+    masked.addChild(maskGfx);
+
+    const makeSprite = (key: string): Sprite => {
+      const s = new Sprite(engine.assets.getTextureOrEmpty(key));
+      s.anchor.set(0.5);
+      s.x = 0;
+      s.y = spriteCY;
+      s.width  = spriteSize;
+      s.height = spriteSize;
+      return s;
+    };
+
+    // Layer 1: albedo/diffuse — the coloured hull surface
+    const base = makeSprite('cruiser_albedo');
+    base.tint  = isLocal ? 0xaaddff : 0xddaa88;  // faction colour tint
+    masked.addChild(base);
+
+    // Layer 2: roughness/dirt — multiply darkens rough pitted areas
+    const rough = makeSprite('cruiser_roughness');
+    rough.blendMode = 'multiply';
+    rough.alpha     = 0.60;
+    masked.addChild(rough);
+
+    // Layer 3: emissive — albedo again, additive, pulls out panel glow
+    const emissive = makeSprite('cruiser_albedo');
+    emissive.blendMode = 'add';
+    emissive.alpha     = 0.20;
+    emissive.tint      = isLocal ? 0x00eeff : 0xff8844;
+    masked.addChild(emissive);
+
+    return { container: masked, emissive };
+  }
+
+  // Outline + cockpit only — texture layers provide all the surface detail.
+  private buildCruiserOutline(pts: number[], rim: number, cockpit: number): Graphics {
+    const g = new Graphics();
+    polyPath(g, pts);
+    g.stroke({ color: rim, width: 1.4, alpha: 0.92 });
+    // Cockpit (size=52 → cockpitY ≈ -20, r ≈ 6.8)
+    const cockpitY = -52 * 0.38;
+    const cr       =  52 * 0.13;
+    g.ellipse(0, cockpitY, cr * 1.1, cr);
+    g.fill({ color: cockpit, alpha: 0.75 });
+    g.ellipse(0, cockpitY, cr * 1.1, cr);
+    g.stroke({ color: cockpit, width: 0.8, alpha: 0.60 });
     return g;
   }
 

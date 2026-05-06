@@ -31,7 +31,10 @@ export const UIBundle: AssetBundle = {
 
 export const ShipBundle: AssetBundle = {
   name: 'ships',
-  assets: [],
+  assets: [
+    { key: 'cruiser_albedo',    src: 'ships/cruiser_albedo.png',    type: 'texture' },
+    { key: 'cruiser_roughness', src: 'ships/cruiser_roughness.png', type: 'texture' },
+  ],
 };
 
 export const AudioBundle: AssetBundle = {
