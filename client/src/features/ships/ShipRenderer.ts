@@ -1,8 +1,10 @@
 import { Container, Graphics } from 'pixi.js';
+import { gsap } from 'gsap';
 import type { World } from '../../core/ecs/World.ts';
 import { createEntityId } from '../../core/ecs/types.ts';
 import type { EntityId } from '../../core/ecs/types.ts';
 import type { RenderPipeline } from '../../core/renderer/RenderPipeline.ts';
+import { ThrusterFilter } from './ThrusterFilter.ts';
 import { RenderLayer } from '../../core/renderer/LayerManager.ts';
 import { lerp, lerpAngle } from '../../core/simulation/interpolation.ts';
 import { NeonTrail } from '../fx/NeonTrail.ts';
@@ -54,19 +56,22 @@ const NOZZLES: Record<string, Array<{ x: number; y: number }>> = {
 };
 
 interface ShipDO {
-  container:    Container;
-  outerGlow:    Graphics;
-  midGlow:      Graphics;
-  body:         Graphics;
-  circuitry:    Graphics;
-  engCone:      Graphics;
-  exhaustBloom: Graphics;
-  engCore:      Graphics;
-  shieldRing:   Graphics;
-  healthBar:    Graphics;
-  warpRing:     Graphics;
-  trail:        NeonTrail;
-  hullSize:     number;
+  container:      Container;
+  outerGlow:      Graphics;
+  midGlow:        Graphics;
+  nudge:          Container;        // GSAP-tweened child: body + circuitry idle vibration
+  body:           Graphics;
+  circuitry:      Graphics;
+  engCone:        Graphics;
+  exhaustBloom:   Graphics;
+  engCore:        Graphics;
+  thrusterFilter: ThrusterFilter;   // GPU nozzle flicker + glow — drives engCore brightness
+  shieldRing:     Graphics;
+  healthBar:      Graphics;
+  warpRing:       Graphics;
+  trail:          NeonTrail;
+  hullSize:       number;
+  tweens:         gsap.core.Tween[];
 }
 
 type ExplosionCallback = (x: number, y: number, scale: number) => void;
@@ -167,9 +172,12 @@ export class ShipRenderer {
       const ePulse      = 0.72 + 0.28 * Math.sin(this.time * 11 + (entity as number));
       const ePulseF     = ePulse + fastFlicker;
 
+      // engCone + exhaustBloom: JS-driven alpha (no filter)
       dobj.engCone.alpha      = visual.engineGlowIntensity * ePulseF * 0.85;
-      dobj.engCore.alpha      = visual.engineGlowIntensity * ePulseF;
       dobj.exhaustBloom.alpha = visual.engineGlowIntensity * ePulse  * 0.65;
+      // engCore: GPU filter drives its flicker and glow — just pass time + intensity
+      dobj.thrusterFilter.time      = this.time;
+      dobj.thrusterFilter.intensity = visual.engineGlowIntensity;
 
       if (heat?.isOverheated) {
         dobj.engCore.tint = 0xff4400;
@@ -186,8 +194,7 @@ export class ShipRenderer {
       dobj.midGlow.alpha    = 0.28 + 0.14 * breathe + shimmer;
       dobj.midGlow.rotation = Math.sin(this.time * 18 + (entity as number)) * 0.025 * visual.engineGlowIntensity;
 
-      // Circuitry emissive pulse — slow throb
-      dobj.circuitry.alpha = 0.7 + 0.3 * Math.sin(this.time * 1.4 + (entity as number) * 0.5);
+      // Circuitry emissive pulse — driven by GSAP tween started in buildShip
 
       // Damage flash
       if (visual.damageFlashTimer > 0) {
@@ -247,6 +254,7 @@ export class ShipRenderer {
     for (const [entity, dobj] of this.displayObjects) {
       if (!activeSet.has(entity)) {
         if (this.thrusterFX) this.thrusterFX.unregister(entity, dobj.container);
+        for (const t of dobj.tweens) t.kill();
         this.shipsLayer.removeChild(dobj.container);
         this.trailLayer.removeChild(dobj.trail.container);
         dobj.container.destroy({ children: true });
@@ -317,15 +325,21 @@ export class ShipRenderer {
     engCone.alpha = 0;
     container.addChild(engCone);
 
+    // nudge: child container for GSAP-driven idle vibration.
+    // Only body + circuitry live here — nothing that the game loop updates by position.
+    const nudge = new Container();
+    container.addChild(nudge);
+
     // Hull body: main fill + per-class panel zones + seams + rim
     const body = this.buildHullBody(shipClass, pts, size, bodyBase, bodyLight, bodyDark, seamColor, rimColor, cockpitColor);
-    container.addChild(body);
+    nudge.addChild(body);
 
-    // Emissive circuitry (additive power conduit traces)
+    // Emissive circuitry (additive power conduit traces) — GSAP pulses alpha
     const circuitry = this.buildCircuitry(shipClass, circuitColor);
-    container.addChild(circuitry);
+    nudge.addChild(circuitry);
 
-    // Engine core hot spots — bright nozzle glow, one per nozzle
+    // Engine core hot spots — bright nozzle glow, one per nozzle.
+    // ThrusterFilter drives all flicker + glow via GPU; alpha stays at 1 always.
     const engCore = new Graphics();
     engCore.blendMode = 'add';
     for (const n of nozzles) {
@@ -336,7 +350,9 @@ export class ShipRenderer {
       engCore.circle(n.x, n.y, size * 0.14);
       engCore.stroke({ color: 0xffffff, width: 0.8, alpha: 0.35 });
     }
-    engCore.alpha = 0;
+    const glowVec: [number, number, number] = isLocal ? [0.0, 0.72, 1.0] : [1.0, 0.40, 0.0];
+    const thrusterFilter = new ThrusterFilter(glowVec);
+    engCore.filters = [thrusterFilter];
     container.addChild(engCore);
 
     // Shield ring (two rings for depth)
@@ -367,7 +383,22 @@ export class ShipRenderer {
       additive: true,
     });
 
-    return { container, outerGlow, midGlow, body, circuitry, engCone, exhaustBloom, engCore, shieldRing, healthBar, warpRing, trail, hullSize: size };
+    // GSAP tweens — stored so they can be killed on destroy
+    const tweens: gsap.core.Tween[] = [];
+
+    // Idle hull vibration: tiny sub-pixel nudge on body+circuitry container.
+    // Different axis timings create a natural micro-tremor rather than a regular pulse.
+    tweens.push(
+      gsap.to(nudge, { x:  0.35, duration: 0.09, repeat: -1, yoyo: true, ease: 'none' }),
+      gsap.to(nudge, { y:  0.28, duration: 0.13, repeat: -1, yoyo: true, ease: 'none', delay: 0.05 }),
+    );
+
+    // Circuitry emissive pulse — slow throb between 0.65 and 1.0 opacity.
+    tweens.push(
+      gsap.to(circuitry, { alpha: 1.0, duration: 0.65, repeat: -1, yoyo: true, ease: 'sine.inOut' }),
+    );
+
+    return { container, outerGlow, midGlow, nudge, body, circuitry, engCone, exhaustBloom, engCore, thrusterFilter, shieldRing, healthBar, warpRing, trail, hullSize: size, tweens };
   }
 
   private buildHullBody(
@@ -622,6 +653,7 @@ export class ShipRenderer {
     for (const unsub of this.unsubs) unsub();
     this.thrusterFX?.destroy();
     for (const dobj of this.displayObjects.values()) {
+      for (const t of dobj.tweens) t.kill();
       dobj.container.destroy({ children: true });
       dobj.trail.container.destroy({ children: true });
     }
