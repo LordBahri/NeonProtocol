@@ -95,6 +95,8 @@ export class BackgroundRenderer {
 
   private buildNebula(): void {
     let phaseOff = 0;
+    const rng = lcg(44412);
+
     for (const def of CLOUD_DEFS) {
       const g = new Graphics();
       g.blendMode = 'add';
@@ -106,9 +108,25 @@ export class BackgroundRenderer {
         const falloff = Math.pow(1 - frac, 1.8);
         const a       = def.maxA * falloff;
         if (a > 0.004) {
-          g.circle(0, 0, r);
+          // Offset each ring so the cloud looks irregular rather than perfectly circular
+          const ox = (rng() - 0.5) * r * 0.38;
+          const oy = (rng() - 0.5) * r * 0.38;
+          g.circle(ox, oy, r);
           g.fill({ color: def.col, alpha: a });
         }
+      }
+
+      // 2–3 elongated lobe blobs break the circular silhouette
+      const lobes = 2 + Math.floor(rng() * 2);
+      for (let l = 0; l < lobes; l++) {
+        const lobeR  = def.r * (0.28 + rng() * 0.32);
+        const lobeOX = (rng() - 0.5) * def.r * 0.70;
+        const lobeOY = (rng() - 0.5) * def.r * 0.70;
+        const lobeA  = def.maxA * (0.10 + rng() * 0.18);
+        g.circle(lobeOX, lobeOY, lobeR);
+        g.fill({ color: def.col, alpha: lobeA });
+        g.circle(lobeOX + lobeR * 0.30, lobeOY + lobeR * 0.20, lobeR * 0.70);
+        g.fill({ color: def.col, alpha: lobeA * 0.60 });
       }
 
       const cont = new Container();

@@ -46,18 +46,27 @@ const HULLS: Record<string, { pts: number[]; size: number; exhaustY: number }> =
   },
 };
 
+// Per-class nozzle positions (local space, y = exhaustY from HULLS)
+const NOZZLES: Record<string, Array<{ x: number; y: number }>> = {
+  fighter:   [{ x: 0, y: 13 }],
+  frigate:   [{ x: -5, y: 18 }, { x: 5, y: 18 }],
+  destroyer: [{ x: -8, y: 24 }, { x: 8, y: 24 }],
+};
+
 interface ShipDO {
-  container:  Container;
-  outerGlow:  Graphics;
-  midGlow:    Graphics;
-  body:       Graphics;
-  engCone:    Graphics;
-  engCore:    Graphics;
-  shieldRing: Graphics;
-  healthBar:  Graphics;
-  warpRing:   Graphics;
-  trail:      NeonTrail;
-  hullSize:   number;
+  container:    Container;
+  outerGlow:    Graphics;
+  midGlow:      Graphics;
+  body:         Graphics;
+  circuitry:    Graphics;
+  engCone:      Graphics;
+  exhaustBloom: Graphics;
+  engCore:      Graphics;
+  shieldRing:   Graphics;
+  healthBar:    Graphics;
+  warpRing:     Graphics;
+  trail:        NeonTrail;
+  hullSize:     number;
 }
 
 type ExplosionCallback = (x: number, y: number, scale: number) => void;
@@ -140,11 +149,9 @@ export class ShipRenderer {
       dobj.container.rotation = ra;
       dobj.container.scale.set(visual.scale);
 
-      // Trail follows world position
       dobj.trail.addPoint(rx, ry);
       dobj.trail.update(dt);
 
-      // Wreck / debris
       const isWreck = visual.spriteKey === 'wreck' || visual.spriteKey === 'debris';
       if (isWreck) {
         dobj.container.alpha = visual.shieldGlowAlpha;
@@ -156,9 +163,14 @@ export class ShipRenderer {
         const speed = Math.sqrt(velocity.vx ** 2 + velocity.vy ** 2);
         visual.engineGlowIntensity = lerp(visual.engineGlowIntensity, Math.min(speed / 400, 1), 0.12);
       }
-      const ePulse = 0.72 + 0.28 * Math.sin(this.time * 11 + (entity as number));
-      dobj.engCone.alpha = visual.engineGlowIntensity * ePulse * 0.85;
-      dobj.engCore.alpha = visual.engineGlowIntensity * ePulse;
+      const fastFlicker = 0.06 * Math.sin(this.time * 47 + (entity as number) * 1.3);
+      const ePulse      = 0.72 + 0.28 * Math.sin(this.time * 11 + (entity as number));
+      const ePulseF     = ePulse + fastFlicker;
+
+      dobj.engCone.alpha      = visual.engineGlowIntensity * ePulseF * 0.85;
+      dobj.engCore.alpha      = visual.engineGlowIntensity * ePulseF;
+      dobj.exhaustBloom.alpha = visual.engineGlowIntensity * ePulse  * 0.65;
+
       if (heat?.isOverheated) {
         dobj.engCore.tint = 0xff4400;
         dobj.engCone.tint = 0xff4400;
@@ -169,11 +181,13 @@ export class ShipRenderer {
 
       // Atmospheric glow breathe
       const breathe = 0.55 + 0.45 * Math.sin(this.time * 1.8 + (entity as number) * 0.7);
-      dobj.outerGlow.alpha = 0.18 + 0.10 * breathe;
-      // Subtle mid-glow shimmer when engine active — creates hull heat effect
-      const shimmer = visual.engineGlowIntensity * 0.08 * Math.sin(this.time * 44 + (entity as number));
-      dobj.midGlow.alpha   = 0.28 + 0.14 * breathe + shimmer;
+      dobj.outerGlow.alpha  = 0.18 + 0.10 * breathe;
+      const shimmer         = visual.engineGlowIntensity * 0.08 * Math.sin(this.time * 44 + (entity as number));
+      dobj.midGlow.alpha    = 0.28 + 0.14 * breathe + shimmer;
       dobj.midGlow.rotation = Math.sin(this.time * 18 + (entity as number)) * 0.025 * visual.engineGlowIntensity;
+
+      // Circuitry emissive pulse — slow throb
+      dobj.circuitry.alpha = 0.7 + 0.3 * Math.sin(this.time * 1.4 + (entity as number) * 0.5);
 
       // Damage flash
       if (visual.damageFlashTimer > 0) {
@@ -188,10 +202,9 @@ export class ShipRenderer {
         ? 0.6 + 0.4 * Math.sin(this.time * 20)
         : 1;
 
-      // Shield ring: always show faint idle frequency, flares on damage
+      // Shield ring
       if (stats) {
         const shieldFrac = stats.shield / stats.maxShield;
-        // Idle shield: very faint always-on ripple (0.03–0.05) — gives ship a living quality
         const idleA  = 0.03 + 0.02 * Math.sin(this.time * 2.2 + (entity as number) * 1.3);
         const targetA = shieldFrac < 0.99 ? shieldFrac * 0.55 + 0.08 : idleA;
         visual.shieldGlowAlpha = lerp(visual.shieldGlowAlpha, targetA, 0.06);
@@ -246,73 +259,83 @@ export class ShipRenderer {
   private buildShip(spriteKey: string, isLocal: boolean): ShipDO {
     const shipClass = spriteKey.replace('ship_', '');
     const hull = HULLS[shipClass] ?? HULLS['fighter']!;
-    const { pts, size, exhaustY } = hull;
+    const { pts, size } = hull;
 
     const glowColor    = isLocal ? 0x00eeff : 0xff4400;
-    const bodyColor    = isLocal ? 0x0d2a40 : 0x3a0d0d;
+    const bodyBase     = isLocal ? 0x0c1f32 : 0x261010;
+    const bodyLight    = isLocal ? 0x152940 : 0x321515;
+    const bodyDark     = isLocal ? 0x07101d : 0x1c0b0b;
+    const seamColor    = isLocal ? 0x050c14 : 0x0f0505;
     const rimColor     = isLocal ? 0x00ccff : 0xff6600;
+    const circuitColor = isLocal ? 0x00eeff : 0xff6622;
     const cockpitColor = isLocal ? 0x88ddff : 0xffaa66;
+
+    const nozzles = NOZZLES[shipClass] ?? NOZZLES['fighter']!;
 
     const container = new Container();
 
-    // Layer 1: outer atmospheric glow (additive, ~2x size)
-    const scaledOuter = pts.map(v => v * 2.0);
+    // exhaustBloom: large soft area behind ship, one per nozzle
+    const exhaustBloom = new Graphics();
+    exhaustBloom.blendMode = 'add';
+    for (const n of nozzles) {
+      const br = size * 0.65;
+      exhaustBloom.circle(n.x, n.y + br * 0.3, br);
+      exhaustBloom.fill({ color: glowColor, alpha: 0.12 });
+      exhaustBloom.circle(n.x, n.y + br * 0.1, br * 0.45);
+      exhaustBloom.fill({ color: glowColor, alpha: 0.20 });
+    }
+    exhaustBloom.alpha = 0;
+    container.addChild(exhaustBloom);
+
+    // Outer atmospheric glow (~2× hull size)
     const outerGlow = new Graphics();
-    polyPath(outerGlow, scaledOuter);
+    polyPath(outerGlow, pts.map(v => v * 2.0));
     outerGlow.fill({ color: glowColor, alpha: 0.22 });
     outerGlow.blendMode = 'add';
     container.addChild(outerGlow);
 
-    // Layer 2: mid glow (additive, ~1.4x size)
-    const scaledMid = pts.map(v => v * 1.42);
+    // Mid glow (~1.42× hull size)
     const midGlow = new Graphics();
-    polyPath(midGlow, scaledMid);
+    polyPath(midGlow, pts.map(v => v * 1.42));
     midGlow.fill({ color: glowColor, alpha: 0.38 });
     midGlow.blendMode = 'add';
     container.addChild(midGlow);
 
-    // Engine cone — drawn below hull body
+    // Engine exhaust cones — one per nozzle, narrows to a point below ship
     const engCone = new Graphics();
-    const coneW = size * 0.30;
-    const coneLen = size * 0.60;
-    engCone.moveTo(-coneW, exhaustY);
-    engCone.lineTo( coneW, exhaustY);
-    engCone.lineTo( coneW * 0.28, exhaustY + coneLen);
-    engCone.lineTo(-coneW * 0.28, exhaustY + coneLen);
-    engCone.closePath();
-    engCone.fill({ color: glowColor, alpha: 0.55 });
     engCone.blendMode = 'add';
+    for (const n of nozzles) {
+      const coneW   = size * 0.17;
+      const coneLen = size * 0.55;
+      engCone.moveTo(n.x - coneW, n.y);
+      engCone.lineTo(n.x + coneW, n.y);
+      engCone.lineTo(n.x + coneW * 0.22, n.y + coneLen);
+      engCone.lineTo(n.x - coneW * 0.22, n.y + coneLen);
+      engCone.closePath();
+      engCone.fill({ color: glowColor, alpha: 0.50 });
+    }
     engCone.alpha = 0;
     container.addChild(engCone);
 
-    // Hull body
-    const body = new Graphics();
-    polyPath(body, pts);
-    body.fill({ color: bodyColor });
-    polyPath(body, pts);
-    body.stroke({ color: rimColor, width: 1.4, alpha: 0.92 });
-
-    // Cockpit
-    const cockpitR = size * 0.13;
-    body.ellipse(0, -size * 0.38, cockpitR * 1.1, cockpitR);
-    body.fill({ color: cockpitColor, alpha: 0.75 });
-
-    // Panel line on larger ships
-    if (size >= 30) {
-      const mid = size * 0.25;
-      body.moveTo(-size * 0.35, mid);
-      body.lineTo( size * 0.35, mid);
-      body.stroke({ color: rimColor, width: 0.6, alpha: 0.25 });
-    }
+    // Hull body: main fill + per-class panel zones + seams + rim
+    const body = this.buildHullBody(shipClass, pts, size, bodyBase, bodyLight, bodyDark, seamColor, rimColor, cockpitColor);
     container.addChild(body);
 
-    // Engine core hot spot
+    // Emissive circuitry (additive power conduit traces)
+    const circuitry = this.buildCircuitry(shipClass, circuitColor);
+    container.addChild(circuitry);
+
+    // Engine core hot spots — bright nozzle glow, one per nozzle
     const engCore = new Graphics();
-    engCore.circle(0, exhaustY, size * 0.10);
-    engCore.fill({ color: 0xffffff, alpha: 0.95 });
-    engCore.circle(0, exhaustY, size * 0.20);
-    engCore.fill({ color: glowColor, alpha: 0.60 });
     engCore.blendMode = 'add';
+    for (const n of nozzles) {
+      engCore.circle(n.x, n.y, size * 0.10);
+      engCore.fill({ color: 0xffffff, alpha: 0.95 });
+      engCore.circle(n.x, n.y, size * 0.20);
+      engCore.fill({ color: glowColor, alpha: 0.60 });
+      engCore.circle(n.x, n.y, size * 0.14);
+      engCore.stroke({ color: 0xffffff, width: 0.8, alpha: 0.35 });
+    }
     engCore.alpha = 0;
     container.addChild(engCore);
 
@@ -344,7 +367,203 @@ export class ShipRenderer {
       additive: true,
     });
 
-    return { container, outerGlow, midGlow, body, engCone, engCore, shieldRing, healthBar, warpRing, trail, hullSize: size };
+    return { container, outerGlow, midGlow, body, circuitry, engCone, exhaustBloom, engCore, shieldRing, healthBar, warpRing, trail, hullSize: size };
+  }
+
+  private buildHullBody(
+    shipClass: string,
+    pts: number[],
+    size: number,
+    base: number,
+    light: number,
+    dark: number,
+    seam: number,
+    rim: number,
+    cockpit: number,
+  ): Graphics {
+    const g = new Graphics();
+
+    // Base hull fill
+    polyPath(g, pts);
+    g.fill({ color: base });
+
+    if (shipClass === 'fighter') {
+      // Nose panel — lighter
+      g.moveTo(0, -22); g.lineTo(9, -6); g.lineTo(-9, -6); g.closePath();
+      g.fill({ color: light, alpha: 0.60 });
+      // Right wing — darker
+      g.moveTo(9, -6); g.lineTo(15, 9); g.lineTo(6, 15); g.lineTo(0, 11); g.closePath();
+      g.fill({ color: dark, alpha: 0.55 });
+      // Left wing mirror
+      g.moveTo(-9, -6); g.lineTo(-15, 9); g.lineTo(-6, 15); g.lineTo(0, 11); g.closePath();
+      g.fill({ color: dark, alpha: 0.55 });
+      // Panel seams
+      g.moveTo(0, -22); g.lineTo(0, 11);
+      g.moveTo(0, -2);  g.lineTo(9, -6);
+      g.moveTo(0, -2);  g.lineTo(-9, -6);
+      g.stroke({ color: seam, width: 0.7, alpha: 0.92 });
+      // Scratches
+      g.moveTo(5, 2);   g.lineTo(12, 7);
+      g.moveTo(-7, -3); g.lineTo(-13, 3);
+      g.stroke({ color: 0x000000, width: 0.5, alpha: 0.55 });
+      // Armor ridge accent
+      g.moveTo(-4, -16); g.lineTo(4, -16);
+      g.stroke({ color: rim, width: 0.6, alpha: 0.18 });
+
+    } else if (shipClass === 'frigate') {
+      // Nose panel
+      g.moveTo(0, -30); g.lineTo(10, -14); g.lineTo(-10, -14); g.closePath();
+      g.fill({ color: light, alpha: 0.58 });
+      // Right flank
+      g.moveTo(10, -14); g.lineTo(18, 2); g.lineTo(15, 16); g.lineTo(7, 22); g.lineTo(0, 18); g.closePath();
+      g.fill({ color: dark, alpha: 0.48 });
+      // Left flank mirror
+      g.moveTo(-10, -14); g.lineTo(-18, 2); g.lineTo(-15, 16); g.lineTo(-7, 22); g.lineTo(0, 18); g.closePath();
+      g.fill({ color: dark, alpha: 0.48 });
+      // Horizontal seam bands
+      g.moveTo(-18, 2); g.lineTo(18, 2);
+      g.moveTo(-15, 16); g.lineTo(15, 16);
+      g.stroke({ color: seam, width: 0.8, alpha: 0.90 });
+      // Centerline + shoulder seams
+      g.moveTo(0, -30); g.lineTo(0, 18);
+      g.moveTo(0, -8);  g.lineTo(10, -14);
+      g.moveTo(0, -8);  g.lineTo(-10, -14);
+      g.stroke({ color: seam, width: 0.7, alpha: 0.85 });
+      // Scratches
+      g.moveTo(8, -5);  g.lineTo(15, 3);
+      g.moveTo(-6, 8);  g.lineTo(-14, 13);
+      g.moveTo(3, 14);  g.lineTo(9, 20);
+      g.stroke({ color: 0x000000, width: 0.5, alpha: 0.50 });
+      // Armor ridges
+      g.moveTo(-5, -22);  g.lineTo(5, -22);
+      g.moveTo(-12, 2);   g.lineTo(12, 2);
+      g.stroke({ color: rim, width: 0.6, alpha: 0.15 });
+
+    } else { // destroyer
+      // Nose panel
+      g.moveTo(0, -38); g.lineTo(12, -22); g.lineTo(-12, -22); g.closePath();
+      g.fill({ color: light, alpha: 0.58 });
+      // Upper right flank
+      g.moveTo(12, -22); g.lineTo(22, -6); g.lineTo(22, 10); g.lineTo(0, 0); g.closePath();
+      g.fill({ color: dark, alpha: 0.42 });
+      // Upper left flank mirror
+      g.moveTo(-12, -22); g.lineTo(-22, -6); g.lineTo(-22, 10); g.lineTo(0, 0); g.closePath();
+      g.fill({ color: dark, alpha: 0.42 });
+      // Lower engine pods (slightly lighter — heat-worn plating)
+      g.moveTo(22, 10); g.lineTo(14, 24); g.lineTo(0, 28); g.lineTo(0, 14); g.closePath();
+      g.fill({ color: light, alpha: 0.22 });
+      g.moveTo(-22, 10); g.lineTo(-14, 24); g.lineTo(0, 28); g.lineTo(0, 14); g.closePath();
+      g.fill({ color: light, alpha: 0.22 });
+      // Horizontal seam bands
+      g.moveTo(-22, -6); g.lineTo(22, -6);
+      g.moveTo(-22, 10); g.lineTo(22, 10);
+      g.stroke({ color: seam, width: 0.90, alpha: 0.92 });
+      // Centerline + shoulder seams
+      g.moveTo(0, -38); g.lineTo(0, 28);
+      g.moveTo(0, -16); g.lineTo(12, -22);
+      g.moveTo(0, -16); g.lineTo(-12, -22);
+      g.moveTo(0, 4);   g.lineTo(22, -6);
+      g.moveTo(0, 4);   g.lineTo(-22, -6);
+      g.stroke({ color: seam, width: 0.70, alpha: 0.75 });
+      // Scratches / micro battle-damage
+      g.moveTo(10, -15); g.lineTo(18, -8);
+      g.moveTo(-8, 3);   g.lineTo(-18, 9);
+      g.moveTo(5, 18);   g.lineTo(12, 23);
+      g.moveTo(-12, -10); g.lineTo(-20, -3);
+      g.stroke({ color: 0x000000, width: 0.6, alpha: 0.50 });
+      // Armor ridges
+      g.moveTo(-8, -30);  g.lineTo(8, -30);
+      g.moveTo(-15, -6);  g.lineTo(15, -6);
+      g.moveTo(-10, 10);  g.lineTo(10, 10);
+      g.stroke({ color: rim, width: 0.7, alpha: 0.15 });
+    }
+
+    // Rim outline
+    polyPath(g, pts);
+    g.stroke({ color: rim, width: 1.4, alpha: 0.92 });
+
+    // Cockpit — bright lens with inner highlight ring
+    const cockpitY = -size * 0.38;
+    const cr       = size * 0.13;
+    g.ellipse(0, cockpitY, cr * 1.1, cr);
+    g.fill({ color: cockpit, alpha: 0.75 });
+    g.ellipse(0, cockpitY, cr * 0.70, cr * 0.60);
+    g.fill({ color: cockpit, alpha: 0.40 });
+    g.ellipse(0, cockpitY, cr * 1.1, cr);
+    g.stroke({ color: cockpit, width: 0.8, alpha: 0.60 });
+
+    return g;
+  }
+
+  private buildCircuitry(shipClass: string, color: number): Graphics {
+    const g = new Graphics();
+    g.blendMode = 'add';
+
+    if (shipClass === 'fighter') {
+      // Central spine
+      g.moveTo(0, -18); g.lineTo(0, 8);
+      g.stroke({ color, width: 0.8, alpha: 0.55 });
+      // Side power branches
+      g.moveTo(0, -10); g.lineTo(7, -4);
+      g.moveTo(0, -10); g.lineTo(-7, -4);
+      g.moveTo(0, 0);   g.lineTo(9, 5);
+      g.moveTo(0, 0);   g.lineTo(-9, 5);
+      g.stroke({ color, width: 0.5, alpha: 0.40 });
+      // Junction nodes
+      g.circle(0, -10, 1.2);  g.fill({ color, alpha: 0.72 });
+      g.circle(0, 0,   1.0);  g.fill({ color, alpha: 0.65 });
+      g.circle(7, -4,  0.8);  g.fill({ color, alpha: 0.50 });
+      g.circle(-7, -4, 0.8);  g.fill({ color, alpha: 0.50 });
+
+    } else if (shipClass === 'frigate') {
+      // Central spine
+      g.moveTo(0, -26); g.lineTo(0, 12);
+      g.stroke({ color, width: 0.9, alpha: 0.55 });
+      // Lateral cross-connect rings
+      g.moveTo(-14, -5);  g.lineTo(14, -5);
+      g.moveTo(-12, 8);   g.lineTo(12, 8);
+      g.stroke({ color, width: 0.5, alpha: 0.32 });
+      // Diagonal branches
+      g.moveTo(0, -14);  g.lineTo(8, -8);
+      g.moveTo(0, -14);  g.lineTo(-8, -8);
+      g.moveTo(0, -5);   g.lineTo(12, 2);
+      g.moveTo(0, -5);   g.lineTo(-12, 2);
+      g.stroke({ color, width: 0.5, alpha: 0.40 });
+      // Junction nodes
+      g.circle(0, -14,  1.4);  g.fill({ color, alpha: 0.72 });
+      g.circle(0, -5,   1.1);  g.fill({ color, alpha: 0.65 });
+      g.circle(0,  8,   1.0);  g.fill({ color, alpha: 0.55 });
+      g.circle(8, -8,   0.9);  g.fill({ color, alpha: 0.45 });
+      g.circle(-8, -8,  0.9);  g.fill({ color, alpha: 0.45 });
+
+    } else { // destroyer — heaviest detail
+      // Central spine
+      g.moveTo(0, -32); g.lineTo(0, 18);
+      g.stroke({ color, width: 1.0, alpha: 0.55 });
+      // Lateral cross-bars
+      g.moveTo(-18, -6);  g.lineTo(18, -6);
+      g.moveTo(-16, 8);   g.lineTo(16, 8);
+      g.moveTo(-8, -20);  g.lineTo(8, -20);
+      g.stroke({ color, width: 0.5, alpha: 0.30 });
+      // Diagonal branches to flanks
+      g.moveTo(0, -20);  g.lineTo(10, -14);
+      g.moveTo(0, -20);  g.lineTo(-10, -14);
+      g.moveTo(0, -6);   g.lineTo(16, -1);
+      g.moveTo(0, -6);   g.lineTo(-16, -1);
+      g.moveTo(0, 8);    g.lineTo(12, 14);
+      g.moveTo(0, 8);    g.lineTo(-12, 14);
+      g.stroke({ color, width: 0.5, alpha: 0.40 });
+      // Junction nodes
+      g.circle(0, -20,  1.6);   g.fill({ color, alpha: 0.72 });
+      g.circle(0, -6,   1.3);   g.fill({ color, alpha: 0.65 });
+      g.circle(0,  8,   1.1);   g.fill({ color, alpha: 0.60 });
+      g.circle(10, -14, 1.0);   g.fill({ color, alpha: 0.50 });
+      g.circle(-10, -14, 1.0);  g.fill({ color, alpha: 0.50 });
+      g.circle(16, -1,  0.9);   g.fill({ color, alpha: 0.45 });
+      g.circle(-16, -1, 0.9);   g.fill({ color, alpha: 0.45 });
+    }
+
+    return g;
   }
 
   private updateStatusBars(

@@ -15,6 +15,7 @@ import { PostProcessPipeline } from '../core/renderer/PostProcessPipeline.ts';
 import { HUD } from '../features/ui/HUD.ts';
 import { Minimap } from '../features/ui/Minimap.ts';
 import { VignetteOverlay } from '../features/fx/VignetteOverlay.ts';
+import { GrainOverlay } from '../features/fx/GrainOverlay.ts';
 import { spawnShip } from '../features/ships/ShipFactory.ts';
 import { lerp } from '../core/simulation/interpolation.ts';
 import {
@@ -34,6 +35,7 @@ export class GameScene extends Scene {
   private asteroidField!: AsteroidField;
   private ambientLife!: AmbientLife;
   private vignette!: VignetteOverlay;
+  private grain!: GrainOverlay;
   private postProcess!: PostProcessPipeline;
   private sectorGrid!: SectorGrid;
   private chunkManager!: ChunkManager;
@@ -93,6 +95,9 @@ export class GameScene extends Scene {
     // CSS-canvas vignette on top of postprocess for double depth at edges
     this.vignette = new VignetteOverlay(w, h);
     pipeline.app.stage.addChild(this.vignette.container);
+
+    // SVG feTurbulence film grain overlay
+    this.grain = new GrainOverlay();
 
     const localEntity = spawnShip(world, 'fighter', 0, 0, { isLocalPlayer: true, serverId: 'local' });
     useGameStore.getState().setLocalPlayer(localEntity, 'local');
@@ -204,6 +209,7 @@ export class GameScene extends Scene {
     this.postProcess?.destroy();
     this.vignette?.destroy();
     this.hud?.destroy();
+    this.grain?.destroy();
     this.minimap?.container.destroy({ children: true });
     globalBus.clear();
   }
