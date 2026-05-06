@@ -1,12 +1,13 @@
+import 'reflect-metadata';
 import 'dotenv/config';
 import { createServer } from 'http';
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import { Server } from 'colyseus';
 import { monitor } from '@colyseus/monitor';
-import { SectorRoom } from './rooms/SectorRoom.js';
-import { LobbyRoom } from './rooms/LobbyRoom.js';
-import { closePool } from './db/connection.js';
+import { SectorRoom } from './rooms/SectorRoom';
+import { LobbyRoom } from './rooms/LobbyRoom';
+import { closePool } from './db/connection';
 
 const PORT = parseInt(process.env['PORT'] ?? '2567', 10);
 const isDev = process.env['NODE_ENV'] !== 'production';

@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { getPool, closePool } from './connection';
 import { getPool, closePool } from './connection.js';
 import 'dotenv/config';
 

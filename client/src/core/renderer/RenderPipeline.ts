@@ -53,6 +53,7 @@ export class RenderPipeline {
     this.app.stage.addChild(this.worldContainer);
 
     this._initialized = true;
+    this.applyCamera();
   }
 
   setCamera(camera: Partial<CameraState>): void {

@@ -1,6 +1,6 @@
 import { Room, type Client, matchMaker } from 'colyseus';
-import { LobbySchema, SectorInfoSchema } from '../schemas/LobbySchema.js';
-import { GameConfig } from '../config/GameConfig.js';
+import { LobbySchema, SectorInfoSchema } from '../schemas/LobbySchema';
+import { GameConfig } from '../config/GameConfig';
 
 export class LobbyRoom extends Room<LobbySchema> {
   private updateInterval: ReturnType<typeof setInterval> | null = null;

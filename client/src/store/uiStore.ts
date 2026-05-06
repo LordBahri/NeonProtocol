@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { createStore } from 'zustand/vanilla';
 import type { EntityId } from '../core/ecs/types.ts';
 import { INVALID_ENTITY } from '../core/ecs/types.ts';
 
@@ -22,7 +22,7 @@ interface UIState {
   toggleMinimap: () => void;
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = createStore<UIState>((set) => ({
   fps: 60,
   showMinimap: true,
   showHUD: true,
