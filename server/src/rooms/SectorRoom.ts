@@ -1,16 +1,16 @@
 import { Room, type Client } from 'colyseus';
-import { SectorSchema }       from '../schemas/SectorSchema.js';
-import { ShipSchema }         from '../schemas/ShipSchema.js';
-import { PhysicsSystem }      from '../systems/PhysicsSystem.js';
-import { CombatSystem }       from '../systems/CombatSystem.js';
-import { InterestManager }    from '../systems/InterestManager.js';
-import { AISystem }           from '../systems/AISystem.js';
-import { LagCompensation }    from '../systems/LagCompensation.js';
-import { PacketValidator }    from '../systems/PacketValidator.js';
-import { ChatSystem }         from '../systems/ChatSystem.js';
-import { GameConfig }         from '../config/GameConfig.js';
-import { PlayerRepository }   from '../db/repositories/PlayerRepository.js';
-import { InventoryRepository }from '../db/repositories/InventoryRepository.js';
+import { SectorSchema }       from '../schemas/SectorSchema';
+import { ShipSchema }         from '../schemas/ShipSchema';
+import { PhysicsSystem }      from '../systems/PhysicsSystem';
+import { CombatSystem }       from '../systems/CombatSystem';
+import { InterestManager }    from '../systems/InterestManager';
+import { AISystem }           from '../systems/AISystem';
+import { LagCompensation }    from '../systems/LagCompensation';
+import { PacketValidator }    from '../systems/PacketValidator';
+import { ChatSystem }         from '../systems/ChatSystem';
+import { GameConfig }         from '../config/GameConfig';
+import { PlayerRepository }   from '../db/repositories/PlayerRepository';
+import { InventoryRepository }from '../db/repositories/InventoryRepository';
 
 export interface SectorRoomOptions {
   sectorId:   string;

@@ -1,7 +1,7 @@
 import type { MapSchema }       from '@colyseus/schema';
-import type { ShipSchema }      from '../schemas/ShipSchema.js';
-import type { LagCompensation } from './LagCompensation.js';
-import { GameConfig }           from '../config/GameConfig.js';
+import type { ShipSchema }      from '../schemas/ShipSchema';
+import type { LagCompensation } from './LagCompensation';
+import { GameConfig }           from '../config/GameConfig';
 
 export interface FireCommand {
   sessionId:       string;

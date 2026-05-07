@@ -1,4 +1,4 @@
-import type { ClientInputMessage } from '../rooms/SectorRoom.js';
+import type { ClientInputMessage } from '../rooms/SectorRoom';
 
 interface RateBucket {
   count: number;

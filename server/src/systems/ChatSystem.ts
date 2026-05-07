@@ -1,7 +1,7 @@
 import type { Room, Client } from 'colyseus';
 import type { MapSchema } from '@colyseus/schema';
-import type { ShipSchema } from '../schemas/ShipSchema.js';
-import type { InterestManager } from './InterestManager.js';
+import type { ShipSchema } from '../schemas/ShipSchema';
+import type { InterestManager } from './InterestManager';
 
 export interface ChatMessage {
   sessionId: string;

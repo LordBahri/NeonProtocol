@@ -1,5 +1,5 @@
 import type { MapSchema } from '@colyseus/schema';
-import type { ShipSchema } from '../schemas/ShipSchema.js';
+import type { ShipSchema } from '../schemas/ShipSchema';
 
 interface PositionSnapshot {
   timestamp: number;
