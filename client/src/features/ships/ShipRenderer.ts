@@ -746,13 +746,22 @@ export class ShipRenderer {
       return s;
     };
 
-    // Layer 1: albedo — PBR lighting shader samples height + roughness maps in GPU
+    // Layer 1: albedo — PBR lighting shader samples height + roughness maps in GPU.
+    // No sprite.tint here: faction colour is passed directly to the shader so the
+    // filter receives the raw, unmodified albedo PNG colours.
     const base = makeSprite('cruiser_albedo');
-    base.tint  = isLocal ? 0xaaddff : 0xddaa88;
     const rimVec: [number, number, number] = isLocal ? [0.0, 0.85, 1.0] : [1.0, 0.50, 0.0];
-    const normalTex  = engine.assets.getTextureOrEmpty('cruiser_height');
+    // Faction tint: subtle hue shift applied inside the PBR shader.
+    const factionVec: [number, number, number] = isLocal
+      ? [0.80, 0.95, 1.10]   // player: faint cool-cyan cast
+      : [1.10, 0.80, 0.60];  // enemy:  warm amber cast
+    const heightTex  = engine.assets.getTextureOrEmpty('cruiser_height');
     const roughTex   = engine.assets.getTextureOrEmpty('cruiser_roughness');
-    const matFilter  = new ShipMaterialFilter(normalTex.source, roughTex.source, rimVec);
+    const matFilter  = new ShipMaterialFilter(
+      heightTex.source, roughTex.source,
+      rimVec, 0.60,
+      factionVec,
+    );
     base.filters = [matFilter];
     masked.addChild(base);
 
