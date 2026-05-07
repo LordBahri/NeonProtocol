@@ -17,8 +17,6 @@ import { ProjectilePool } from '../features/combat/ProjectilePool.ts';
 import { WeaponSystem } from '../features/combat/WeaponSystem.ts';
 import { CombatAI } from '../features/ships/CombatAI.ts';
 import { PostProcessPipeline } from '../core/renderer/PostProcessPipeline.ts';
-import { HUD } from '../features/ui/HUD.ts';
-import { Minimap } from '../features/ui/Minimap.ts';
 import { VignetteOverlay } from '../features/fx/VignetteOverlay.ts';
 import { GrainOverlay } from '../features/fx/GrainOverlay.ts';
 import { ShipLighting } from '../features/ships/ShipLighting.ts';
@@ -43,6 +41,13 @@ import { GalaxyOverlay } from '../features/galaxy/GalaxyOverlay.ts';
 import { AsteroidResourceSystem, spawnAsteroidBelt } from '../features/economy/AsteroidResourceSystem.ts';
 import { HaulingSystem } from '../features/economy/HaulingSystem.ts';
 import { MarketTerminalUI } from '../features/economy/MarketTerminalUI.ts';
+// ── UI framework ───────────────────────────────────────────────────────────────
+import { HolographicHUD } from '../features/ui/HolographicHUD.ts';
+import { RadarDisplay } from '../features/ui/RadarDisplay.ts';
+import { UIManager } from '../features/ui/UIManager.ts';
+import { InventoryPanel } from '../features/ui/InventoryPanel.ts';
+import { FittingWindow } from '../features/ui/FittingWindow.ts';
+import { CorporationPanel } from '../features/ui/CorporationPanel.ts';
 
 export class GameScene extends Scene {
   readonly name = 'GameScene';
@@ -61,18 +66,20 @@ export class GameScene extends Scene {
   private cinExplosion!: CinematicExplosion;
   private empEffect!: EMPEffect;
   private projectilePool!: ProjectilePool;
-  private hud!: HUD;
-  private minimap!: Minimap;
+  // ── UI framework ──────────────────────────────────────────────────────────
+  private hud!:    HolographicHUD;
+  private radar!:  RadarDisplay;
+  private uiMgr!:  UIManager;
 
   // ── Galaxy simulation ─────────────────────────────────────────────────────
-  private fog!:          FogOfWar;
-  private scanner!:      ScanningSystem;
-  private factionSim!:   FactionInfluence;
-  private trafficSys!:   TrafficSystem;
+  private fog!:           FogOfWar;
+  private scanner!:       ScanningSystem;
+  private factionSim!:    FactionInfluence;
+  private trafficSys!:    TrafficSystem;
   private galaxyOverlay!: GalaxyOverlay;
 
   // ── Economy simulation ────────────────────────────────────────────────────
-  private hauling!:       HaulingSystem;
+  private hauling!:        HaulingSystem;
   private marketTerminal!: MarketTerminalUI;
 
   // Cinematic camera state — computed here, applied via engine.camera.setTarget
@@ -124,11 +131,18 @@ export class GameScene extends Scene {
     });
 
     const uiLayer = document.getElementById('ui-layer') as HTMLElement;
-    this.hud = new HUD(uiLayer);
 
-    this.minimap = new Minimap();
-    pipeline.app.stage.addChild(this.minimap.container);
-    this.minimap.positionBottomRight(w, h);
+    // ── UI framework ────────────────────────────────────────────────────────
+    this.hud   = new HolographicHUD(uiLayer);
+    this.radar = new RadarDisplay(pipeline);
+    this.radar.positionBottomRight(w, h);
+
+    this.uiMgr = new UIManager(uiLayer);
+    const focusCb = (id: string) => this.uiMgr.bringToFront(id);
+    this.uiMgr.register(new InventoryPanel(focusCb));
+    this.uiMgr.register(new FittingWindow(focusCb));
+    this.uiMgr.register(new CorporationPanel(focusCb));
+    this.uiMgr.registerShortcut('KeyH', () => this.uiMgr.hideAll());
 
     // CSS-canvas vignette on top of postprocess for double depth at edges
     this.vignette = new VignetteOverlay(w, h);
@@ -212,8 +226,10 @@ export class GameScene extends Scene {
         const speed = Math.sqrt(velocity.vx ** 2 + velocity.vy ** 2);
         this.hud.updateShipStats(stats.hull, stats.maxHull, stats.shield, stats.maxShield);
         this.hud.updateSpeed(speed);
+        this.hud.updateSector(useGameStore.getState().sectorName);
       }
     }
+    this.hud.tickCredits();
 
     // ── Simulation systems ────────────────────────────────────────────────────
     WeaponSystem.update(world, dt);
@@ -242,14 +258,15 @@ export class GameScene extends Scene {
 
     useUIStore.getState().setCamera(camX, camY);
     this.hud.updateFPS(Math.round(pipeline.ticker.FPS));
+    this.uiMgr.update(dt);
 
     const screen = pipeline.screen;
-    this.minimap.update(world, camX, camY);
-    this.minimap.positionBottomRight(screen.width, screen.height);
+    this.radar.update(world, camX, camY, dt);
+    this.radar.positionBottomRight(screen.width, screen.height);
   }
 
   onResize(width: number, height: number): void {
-    this.minimap?.positionBottomRight(width, height);
+    this.radar?.positionBottomRight(width, height);
     this.vignette?.resize(width, height);
     this.postProcess?.onResize();
   }
@@ -262,8 +279,9 @@ export class GameScene extends Scene {
       if (entity === localEntity) {
         useGameStore.getState().setPhase('dead');
         this.hud.flashDamage();
-        // Heavy screen shake on death
         engine.camera.shake(6, 0.8, 18);
+      } else {
+        this.hud.notify('ENEMY DESTROYED', '#00ff88');
       }
 
       const transform = engine.world.getComponent(entity, TransformComponent);
@@ -277,13 +295,15 @@ export class GameScene extends Scene {
       const localEntity = useGameStore.getState().localPlayerEntity;
       if (targetEntity === localEntity) {
         this.hud.flashDamage();
-        // Light screen shake on hit
         engine.camera.shake(2.5, 0.35, 22);
       }
     });
   }
 
   dispose(): void {
+    this.uiMgr?.destroy();
+    this.hud?.destroy();
+    this.radar?.destroy();
     this.marketTerminal?.destroy();
     this.galaxyOverlay?.destroy();
     this.beamRenderer?.destroy();
@@ -297,9 +317,7 @@ export class GameScene extends Scene {
     this.background?.destroy();
     this.postProcess?.destroy();
     this.vignette?.destroy();
-    this.hud?.destroy();
     this.grain?.destroy();
-    this.minimap?.container.destroy({ children: true });
     globalBus.clear();
   }
 }
