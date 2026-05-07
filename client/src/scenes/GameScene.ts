@@ -30,6 +30,7 @@ import {
 import { useGameStore } from '../store/gameStore.ts';
 import { useUIStore } from '../store/uiStore.ts';
 import { globalBus, NetworkEvent } from '../core/network/MessageBus.ts';
+import { InputEvent }               from '../core/input/InputManager.ts';
 import type { EntityId } from '../core/ecs/types.ts';
 // ── Galaxy systems ─────────────────────────────────────────────────────────────
 import { getGalaxy, GALAXY_W, GALAXY_H } from '../features/galaxy/GalaxyGenerator.ts';
@@ -47,7 +48,8 @@ import { RadarDisplay } from '../features/ui/RadarDisplay.ts';
 import { UIManager } from '../features/ui/UIManager.ts';
 import { InventoryPanel } from '../features/ui/InventoryPanel.ts';
 import { FittingWindow } from '../features/ui/FittingWindow.ts';
-import { CorporationPanel } from '../features/ui/CorporationPanel.ts';
+import { CorporationPanel }  from '../features/ui/CorporationPanel.ts';
+import { NavigationMarker }  from '../features/ships/NavigationMarker.ts';
 
 export class GameScene extends Scene {
   readonly name = 'GameScene';
@@ -81,6 +83,10 @@ export class GameScene extends Scene {
   // ── Economy simulation ────────────────────────────────────────────────────
   private hauling!:        HaulingSystem;
   private marketTerminal!: MarketTerminalUI;
+
+  // ── Navigation ────────────────────────────────────────────────────────────
+  private navMarker!:      NavigationMarker;
+  private _hadNavTarget = false;
 
   // Cinematic camera state — computed here, applied via engine.camera.setTarget
   private lookX = 0;
@@ -170,6 +176,9 @@ export class GameScene extends Scene {
     this.hauling       = new HaulingSystem(galaxy);
     this.marketTerminal = new MarketTerminalUI(uiLayer, this.hauling);
 
+    // Navigation marker — holographic ring shown at right-click nav target
+    this.navMarker = new NavigationMarker(pipeline);
+
     // Spawn a test asteroid belt near the player start
     spawnAsteroidBelt(world, 800, 0, 12, 1, 42);
 
@@ -186,7 +195,6 @@ export class GameScene extends Scene {
     setupCombatShip(world, enemy3, 'beam_laser', 260);
 
     useGameStore.getState().setPhase('playing');
-
     console.log('[GameScene] Entered — 3 ships spawned at world origin');
     this.subscribeEvents();
   }
@@ -255,6 +263,12 @@ export class GameScene extends Scene {
     this.effectsManager.update(dt);
     this.projectilePool.update(dt);
     this.postProcess.update(dt);
+    this.navMarker.update(dt);
+
+    // Fade out marker when NavigationSystem clears the target on arrival
+    const hasNav = useGameStore.getState().navigationTarget !== null;
+    if (this._hadNavTarget && !hasNav) this.navMarker.hide();
+    this._hadNavTarget = hasNav;
 
     useUIStore.getState().setCamera(camX, camY);
     this.hud.updateFPS(Math.round(pipeline.ticker.FPS));
@@ -272,6 +286,14 @@ export class GameScene extends Scene {
   }
 
   private subscribeEvents(): void {
+    // Show/re-show the holographic nav marker on right-click
+    globalBus.on(InputEvent.MOUSE_DOWN, (data: unknown) => {
+      const { button } = data as { button: number };
+      if (button !== 2) return;
+      const { worldX, worldY } = engine.input.mouse;
+      this.navMarker.show(worldX, worldY);
+    });
+
     globalBus.on(NetworkEvent.COMBAT_DEATH, (data: unknown) => {
       const { entity } = data as { entity: EntityId };
       const localEntity = useGameStore.getState().localPlayerEntity;
@@ -304,6 +326,7 @@ export class GameScene extends Scene {
     this.uiMgr?.destroy();
     this.hud?.destroy();
     this.radar?.destroy();
+    this.navMarker?.destroy();
     this.marketTerminal?.destroy();
     this.galaxyOverlay?.destroy();
     this.beamRenderer?.destroy();
