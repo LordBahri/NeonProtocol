@@ -1,9 +1,9 @@
 import { gsap }   from 'gsap';
 import { engine } from './Engine.ts';
 import { CoreBundle, SpaceBundle, ShipBundle, AudioBundle } from './core/assets/AssetBundle.ts';
-import { SystemScheduler } from './core/ecs/SystemScheduler.ts';
 import { InputSystem }         from './features/ships/InputSystem.ts';
 import { MovementSystem }      from './features/ships/MovementSystem.ts';
+import { NavigationSystem }    from './features/ships/NavigationSystem.ts';
 import { CombatSystem }        from './features/combat/CombatSystem.ts';
 import { ShieldRechargeSystem }from './features/combat/ShieldRechargeSystem.ts';
 import { GameScene }           from './scenes/GameScene.ts';
@@ -19,7 +19,7 @@ function registerDefaultActions(): void {
     ROTATE_LEFT:     { keys: ['KeyA', 'ArrowLeft'] },
     ROTATE_RIGHT:    { keys: ['KeyD', 'ArrowRight'] },
     FIRE_PRIMARY:    { keys: ['Space', 'MouseButton0'] },
-    FIRE_SECONDARY:  { keys: ['KeyE', 'MouseButton2'] },
+    FIRE_SECONDARY:  { keys: ['KeyE'] },
     TARGET_NEAREST:  { keys: ['KeyT'] },
     MAP_TOGGLE:      { keys: ['KeyM'] },
     BOOST:           { keys: ['ShiftLeft', 'ShiftRight'],
@@ -34,6 +34,7 @@ function registerSystems(): void {
   engine.scheduler.registerGroup('simulation',
     InputSystem,
     MovementSystem,
+    NavigationSystem,
     CombatSystem,
     ShieldRechargeSystem,
   );

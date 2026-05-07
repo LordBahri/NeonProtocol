@@ -12,6 +12,8 @@ export interface ShipStats {
   speed: number;
 }
 
+export interface Vector2 { x: number; y: number; }
+
 interface GameState {
   phase: GamePhase;
   localPlayerEntity: EntityId;
@@ -22,6 +24,7 @@ interface GameState {
   playerCount: number;
   tickRate: number;
   simulationTime: number;
+  navigationTarget: Vector2 | null;
 
   setPhase: (phase: GamePhase) => void;
   setLocalPlayer: (entityId: EntityId, playerId: string) => void;
@@ -29,6 +32,8 @@ interface GameState {
   updateShipStats: (stats: Partial<ShipStats>) => void;
   setPlayerCount: (count: number) => void;
   tickSimulation: (dt: number) => void;
+  setNavigationTarget: (x: number, y: number) => void;
+  clearNavigationTarget: () => void;
 }
 
 export const useGameStore = createStore<GameState>((set) => ({
@@ -41,6 +46,7 @@ export const useGameStore = createStore<GameState>((set) => ({
   playerCount: 0,
   tickRate: 20,
   simulationTime: 0,
+  navigationTarget: null,
 
   setPhase: (phase) => set({ phase }),
   setLocalPlayer: (localPlayerEntity, localPlayerId) => set({ localPlayerEntity, localPlayerId }),
@@ -48,4 +54,6 @@ export const useGameStore = createStore<GameState>((set) => ({
   updateShipStats: (stats) => set((s) => ({ shipStats: { ...s.shipStats, ...stats } })),
   setPlayerCount: (playerCount) => set({ playerCount }),
   tickSimulation: (dt) => set((s) => ({ simulationTime: s.simulationTime + dt })),
+  setNavigationTarget: (x, y) => set({ navigationTarget: { x, y } }),
+  clearNavigationTarget: () => set({ navigationTarget: null }),
 }));

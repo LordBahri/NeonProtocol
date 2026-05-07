@@ -45,6 +45,9 @@ export interface PlayerInputData {
   targetY: number;
   boost: boolean;
   activateWarp: boolean;
+  hasNavTarget: boolean;
+  navTargetX: number;
+  navTargetY: number;
 }
 
 export interface NetworkSyncData {
@@ -112,12 +115,14 @@ export const PlayerInputComponent = defineComponent<PlayerInputData>(
     rotateLeft: false, rotateRight: false,
     fire: false, targetX: 0, targetY: 0,
     boost: false, activateWarp: false,
+    hasNavTarget: false, navTargetX: 0, navTargetY: 0,
   }),
   (c) => {
     c.thrustForward = false; c.thrustBack = false;
     c.rotateLeft = false; c.rotateRight = false;
     c.fire = false; c.targetX = 0; c.targetY = 0;
     c.boost = false; c.activateWarp = false;
+    c.hasNavTarget = false; c.navTargetX = 0; c.navTargetY = 0;
   },
 );
 
