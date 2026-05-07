@@ -50,6 +50,9 @@ import { InventoryPanel } from '../features/ui/InventoryPanel.ts';
 import { FittingWindow } from '../features/ui/FittingWindow.ts';
 import { CorporationPanel }  from '../features/ui/CorporationPanel.ts';
 import { NavigationMarker }  from '../features/ships/NavigationMarker.ts';
+import { ChatWindow }        from '../features/ui/ChatWindow.ts';
+// ── Networking ──────────────────────────────────────────────────────────────────
+import { NetworkSystem }     from '../core/network/NetworkSystem.ts';
 
 export class GameScene extends Scene {
   readonly name = 'GameScene';
@@ -86,7 +89,10 @@ export class GameScene extends Scene {
 
   // ── Navigation ────────────────────────────────────────────────────────────
   private navMarker!:      NavigationMarker;
-  private _hadNavTarget = false;
+  private _hadNavTarget  = false;
+
+  // ── Multiplayer networking ────────────────────────────────────────────────
+  private network!:        NetworkSystem;
 
   // Cinematic camera state — computed here, applied via engine.camera.setTarget
   private lookX = 0;
@@ -143,11 +149,15 @@ export class GameScene extends Scene {
     this.radar = new RadarDisplay(pipeline);
     this.radar.positionBottomRight(w, h);
 
+    // ── Networking — try to connect; falls back to offline mode silently ────
+    this.network = new NetworkSystem(import.meta.env['VITE_SERVER_URL'] ?? 'ws://localhost:2567');
+
     this.uiMgr = new UIManager(uiLayer);
     const focusCb = (id: string) => this.uiMgr.bringToFront(id);
     this.uiMgr.register(new InventoryPanel(focusCb));
     this.uiMgr.register(new FittingWindow(focusCb));
     this.uiMgr.register(new CorporationPanel(focusCb));
+    this.uiMgr.register(new ChatWindow(focusCb, this.network));
     this.uiMgr.registerShortcut('KeyH', () => this.uiMgr.hideAll());
 
     // CSS-canvas vignette on top of postprocess for double depth at edges
@@ -182,20 +192,26 @@ export class GameScene extends Scene {
     // Spawn a test asteroid belt near the player start
     spawnAsteroidBelt(world, 800, 0, 12, 1, 42);
 
-    const localEntity = spawnShip(world, 'fighter', 0, 0, { isLocalPlayer: true, serverId: 'local' });
-    useGameStore.getState().setLocalPlayer(localEntity, 'local');
+    // Try to connect to server (non-blocking — falls back to offline mode)
+    void this.network.connect(world, { sectorId: 'sector_0_0', username: 'Pilot' });
 
-    const enemy1 = spawnShip(world, 'frigate',   300, -200, { serverId: 'enemy1' });
-    setupCombatShip(world, enemy1, 'pulse_laser', 320);
+    // Offline fallback: spawn local entities if not connected after a short delay
+    setTimeout(() => {
+      if (!this.network.connected && !world.isAlive(useGameStore.getState().localPlayerEntity)) {
+        const localEntity = spawnShip(world, 'fighter', 0, 0, { isLocalPlayer: true, serverId: 'local' });
+        useGameStore.getState().setLocalPlayer(localEntity, 'local');
 
-    const enemy2 = spawnShip(world, 'destroyer', -300,  200, { serverId: 'enemy2' });
-    setupCombatShip(world, enemy2, 'autocannon', 380);
-
-    const enemy3 = spawnShip(world, 'cruiser', 500, 300, { serverId: 'cruiser1' });
-    setupCombatShip(world, enemy3, 'beam_laser', 260);
+        const enemy1 = spawnShip(world, 'frigate',   300, -200, { serverId: 'enemy1' });
+        setupCombatShip(world, enemy1, 'pulse_laser', 320);
+        const enemy2 = spawnShip(world, 'destroyer', -300,  200, { serverId: 'enemy2' });
+        setupCombatShip(world, enemy2, 'autocannon', 380);
+        const enemy3 = spawnShip(world, 'cruiser',    500,  300, { serverId: 'cruiser1' });
+        setupCombatShip(world, enemy3, 'beam_laser', 260);
+      }
+    }, 2000);
 
     useGameStore.getState().setPhase('playing');
-    console.log('[GameScene] Entered — 3 ships spawned at world origin');
+    console.log('[GameScene] Entered — connecting to server (2s offline fallback active)');
     this.subscribeEvents();
   }
 
@@ -238,6 +254,10 @@ export class GameScene extends Scene {
       }
     }
     this.hud.tickCredits();
+
+    // ── Network: send input + reconcile server state ──────────────────────────
+    this.network.sendInput(world);
+    this.network.reconcile(world);
 
     // ── Simulation systems ────────────────────────────────────────────────────
     WeaponSystem.update(world, dt);
@@ -323,6 +343,7 @@ export class GameScene extends Scene {
   }
 
   dispose(): void {
+    this.network?.disconnect();
     this.uiMgr?.destroy();
     this.hud?.destroy();
     this.radar?.destroy();

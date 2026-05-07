@@ -2,9 +2,10 @@ import { Client, type Room } from 'colyseus.js';
 import { globalBus, NetworkEvent } from './MessageBus.ts';
 
 export interface JoinOptions {
-  playerId?: string;
+  playerId?:  string;
   shipClass?: string;
-  sectorId?: string;
+  sectorId?:  string;
+  username?:  string;
 }
 
 export class ColyseusNetworkClient {

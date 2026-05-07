@@ -1,7 +1,7 @@
 import type { MapSchema } from '@colyseus/schema';
-import type { ShipSchema } from '../schemas/ShipSchema';
-import type { PhysicsInput } from './PhysicsSystem';
-import type { FireCommand } from './CombatSystem';
+import type { ShipSchema } from '../schemas/ShipSchema.js';
+import type { PhysicsInput } from './PhysicsSystem.js';
+import type { FireCommand } from './CombatSystem.js';
 
 export type AIBehavior = 'patrol' | 'chase' | 'flee' | 'idle';
 
@@ -137,7 +137,8 @@ export class AISystem {
     const dist = Math.sqrt(dx * dx + dy * dy);
 
     if (dist < ATTACK_RANGE) {
-      fires.push({ sessionId: agent.sessionId, weaponType: 'laser' });
+      const now = Date.now();
+      fires.push({ sessionId: agent.sessionId, weaponType: 'laser', clientTime: now, clientTimestamp: now });
     }
 
     return this.steerToward(ship.x, ship.y, ship.angle, targetX, targetY, 1.0);
@@ -163,10 +164,11 @@ export class AISystem {
 
     return {
       thrustForward: throttle > 0.3,
-      thrustBack: false,
-      rotateLeft: diff < -0.1,
-      rotateRight: diff > 0.1,
-      angle: targetAngle,
+      thrustBack:    false,
+      rotateLeft:    diff < -0.1,
+      rotateRight:   diff > 0.1,
+      angle:         targetAngle,
+      seq:           0,
     };
   }
 }
