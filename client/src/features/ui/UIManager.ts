@@ -55,6 +55,8 @@ export class UIManager {
     if (w.visible) this.bringToFront(id);
   }
 
+  isOpen(id: string): boolean { return this.windows.get(id)?.visible ?? false; }
+
   hideAll(): void { this.windows.forEach(w => w.hide()); }
 
   // ── Per-frame update ────────────────────────────────────────────────

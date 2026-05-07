@@ -51,6 +51,7 @@ import { FittingWindow } from '../features/ui/FittingWindow.ts';
 import { CorporationPanel }  from '../features/ui/CorporationPanel.ts';
 import { NavigationMarker }  from '../features/ships/NavigationMarker.ts';
 import { ChatWindow }        from '../features/ui/ChatWindow.ts';
+import { Sidebar }           from '../features/ui/Sidebar.ts';
 // ── Networking ──────────────────────────────────────────────────────────────────
 import { NetworkSystem }     from '../core/network/NetworkSystem.ts';
 
@@ -90,6 +91,9 @@ export class GameScene extends Scene {
   // ── Navigation ────────────────────────────────────────────────────────────
   private navMarker!:      NavigationMarker;
   private _hadNavTarget  = false;
+
+  // ── Sidebar ───────────────────────────────────────────────────────────────
+  private sidebar!:        Sidebar;
 
   // ── Multiplayer networking ────────────────────────────────────────────────
   private network!:        NetworkSystem;
@@ -159,6 +163,14 @@ export class GameScene extends Scene {
     this.uiMgr.register(new CorporationPanel(focusCb));
     this.uiMgr.register(new ChatWindow(focusCb, this.network));
     this.uiMgr.registerShortcut('KeyH', () => this.uiMgr.hideAll());
+
+    // ── Eve Online-style Neocom sidebar ──────────────────────────────────────
+    this.sidebar = new Sidebar(
+      uiLayer,
+      (id) => this.uiMgr.isOpen(id),
+      (id) => this.uiMgr.toggle(id),
+    );
+    this.sidebar.setPilot('PILOT', '');
 
     // CSS-canvas vignette on top of postprocess for double depth at edges
     this.vignette = new VignetteOverlay(w, h);
@@ -293,6 +305,7 @@ export class GameScene extends Scene {
     useUIStore.getState().setCamera(camX, camY);
     this.hud.updateFPS(Math.round(pipeline.ticker.FPS));
     this.uiMgr.update(dt);
+    this.sidebar?.update();
 
     const screen = pipeline.screen;
     this.radar.update(world, camX, camY, dt);
@@ -344,6 +357,7 @@ export class GameScene extends Scene {
 
   dispose(): void {
     this.network?.disconnect();
+    this.sidebar?.destroy();
     this.uiMgr?.destroy();
     this.hud?.destroy();
     this.radar?.destroy();
